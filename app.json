@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Nerdie Blaq Fit",
+    "slug": "nerdie-blaq-fit",
+    "scheme": "nerdieblaqfit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "jsEngine": "hermes",
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#09090B"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
