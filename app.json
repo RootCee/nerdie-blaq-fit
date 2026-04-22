@@ -13,10 +13,13 @@
     "experiments": {
       "typedRoutes": true
     },
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
+      "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
+      "buildNumber": "1",
       "supportsTablet": true
     },
     "android": {

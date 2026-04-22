@@ -3,9 +3,25 @@ import { StyleSheet, Text, View } from "react-native";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
+import { generateMealPlan } from "@/features/nutrition/generate-meal-plan";
 import { generateNutritionGuidance } from "@/features/nutrition/generate-nutrition-guidance";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { GroceryList } from "@/types/meal-plan";
 import { colors, spacing } from "@/theme";
+
+const GROCERY_CATEGORIES: Array<{ key: keyof GroceryList; label: string }> = [
+  { key: "protein", label: "Protein" },
+  { key: "carbs", label: "Carbs" },
+  { key: "fats", label: "Fats" },
+  { key: "extras", label: "Extras" },
+];
+
+const SLOT_LABELS: Record<string, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  snack: "Snack",
+  dinner: "Dinner",
+};
 
 export default function MealsScreen() {
   const { profile, isComplete } = useOnboardingStore();
@@ -22,6 +38,8 @@ export default function MealsScreen() {
       </Screen>
     );
   }
+
+  const mealPlan = generateMealPlan(profile.dietaryPreference ?? "balanced");
 
   return (
     <Screen title="Meals" subtitle="Simple daily targets and meal structure built from your saved profile.">
@@ -49,6 +67,39 @@ export default function MealsScreen() {
             ))}
           </View>
         ))}
+      </SectionCard>
+
+      <SectionCard title="Meal prep guide" eyebrow="Concrete meals for your preference">
+        {mealPlan.meals.map((meal) => (
+          <View key={meal.slot} style={styles.prepCard}>
+            <Text style={styles.prepSlot}>{SLOT_LABELS[meal.slot]}</Text>
+            <Text style={styles.prepTitle}>{meal.title}</Text>
+            <Text style={styles.prepDesc}>{meal.description}</Text>
+            {meal.ingredients.map((ingredient) => (
+              <Text key={ingredient.name} style={styles.listItem}>
+                • {ingredient.name} — {ingredient.amount}
+              </Text>
+            ))}
+            <Text style={styles.portionHint}>{meal.portionGuidance}</Text>
+          </View>
+        ))}
+      </SectionCard>
+
+      <SectionCard title="Grocery list" eyebrow="Stock up for the week">
+        {GROCERY_CATEGORIES.map(({ key, label }) => {
+          const items = mealPlan.groceryList[key];
+          if (items.length === 0) return null;
+          return (
+            <View key={key} style={styles.groceryCategory}>
+              <Text style={styles.groceryCategoryLabel}>{label}</Text>
+              {items.map((item) => (
+                <Text key={item.name} style={styles.listItem}>
+                  • {item.name} — {item.amount}
+                </Text>
+              ))}
+            </View>
+          );
+        })}
       </SectionCard>
 
       <SectionCard title="Supplement ideas" eyebrow="Optional support">
@@ -104,5 +155,46 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     lineHeight: 21,
+  },
+  prepCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 16,
+    borderColor: colors.border,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  prepSlot: {
+    color: colors.primarySoft,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  prepTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  prepDesc: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  portionHint: {
+    color: colors.accentSoft,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 18,
+    marginTop: spacing.xs,
+  },
+  groceryCategory: {
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  groceryCategoryLabel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

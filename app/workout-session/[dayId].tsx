@@ -52,6 +52,29 @@ function parseNumericValue(value: string) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function deriveBestSetToday(sets: WorkoutSetLog[]): string | null {
+  const completed = sets.filter((s) => s.isCompleted);
+  if (completed.length === 0) return null;
+
+  const best = completed.reduce((current, candidate) => {
+    const cw = parseNumericValue(current.weight);
+    const cand_w = parseNumericValue(candidate.weight);
+    if (cand_w > cw) return candidate;
+    if (cand_w < cw) return current;
+    const cr = parseNumericValue(current.reps);
+    const cand_r = parseNumericValue(candidate.reps);
+    if (cand_r > cr) return candidate;
+    if (cand_r < cr) return current;
+    return cand_w * cand_r >= cw * cr ? candidate : current;
+  });
+
+  const weight = parseNumericValue(best.weight);
+  const reps = parseNumericValue(best.reps);
+  if (weight === 0 && reps === 0) return null;
+  if (weight === 0) return `${reps} rep${reps !== 1 ? "s" : ""}`;
+  return `${weight} lb × ${reps}`;
+}
+
 export default function WorkoutSessionScreen() {
   const params = useLocalSearchParams<{ dayId: string }>();
   const [day, setDay] = useState<WorkoutDay | null>(null);
@@ -297,6 +320,7 @@ export default function WorkoutSessionScreen() {
     const exerciseLog = log.exerciseLogs.find((entry) => entry.exerciseSlug === exerciseSlug);
     const exerciseSummary = volumeSummary.exercises.find((entry) => entry.exerciseSlug === exerciseSlug);
     const priorPerformance = priorPerformanceByExercise[exerciseSlug];
+    const bestSetToday = exerciseLog ? deriveBestSetToday(exerciseLog.sets) : null;
     const previousVsToday: WorkoutPreviousVsTodayComparison | null =
       priorPerformance && exerciseLog
         ? {
@@ -430,6 +454,9 @@ export default function WorkoutSessionScreen() {
             />
           </View>
         ))}
+        {bestSetToday ? (
+          <Text style={styles.bestSetToday}>Best set today: {bestSetToday}</Text>
+        ) : null}
         <FormField
           label="Notes (optional)"
           value={exerciseLog?.notes ?? ""}
@@ -761,5 +788,11 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 1.4,
+  },
+  bestSetToday: {
+    color: colors.accentSoft,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 19,
   },
 });
