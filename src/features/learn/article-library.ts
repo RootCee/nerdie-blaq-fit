@@ -99,6 +99,21 @@ export const learnArticles: LearnArticle[] = [
     tags: ["beginners", "habit building", "simplicity"],
     estimatedReadTimeMinutes: 2,
   },
+  {
+    slug: "supersets-explained-for-beginners",
+    title: "Supersets Explained: What They Are and When to Use Them",
+    category: "beginner-tips",
+    shortSummary:
+      "Supersets pair two exercises back to back to save time and keep lighter work moving without changing the whole workout.",
+    fullContent: [
+      "A superset means performing one exercise and then moving to another before taking the full rest break. In beginner-friendly programming, supersets usually show up with accessory work, lighter conditioning, or a short finisher instead of your heaviest lifts.",
+      "People use supersets because they can make a workout feel smoother and more efficient. A well-built superset can save time, keep your heart rate slightly higher, and help you get useful extra work done without turning the whole session into chaos.",
+      "A simple beginner example is pairing a push movement with a pull movement, or pairing two short core drills at the end of a workout. The key is that both movements should still be done with control. You are not racing through sloppy reps.",
+      "Use supersets carefully when fatigue could make technique fall apart. Heavy barbell work, complex lifts, or anything that already feels technically demanding usually deserves its own full attention and a normal rest break.",
+    ],
+    tags: ["supersets", "beginner training", "time efficiency"],
+    estimatedReadTimeMinutes: 3,
+  },
 ];
 
 export function getLearnArticle(slug: string) {

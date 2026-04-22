@@ -1,4 +1,4 @@
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -7,6 +7,13 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { getExerciseMetadata } from "@/features/workouts/exercise-library";
 import { colors, spacing } from "@/theme";
 
+function formatSubstitutionType(type: string) {
+  return type
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function ExerciseDetailScreen() {
   const params = useLocalSearchParams<{ slug: string; name?: string }>();
   const metadata = getExerciseMetadata(params.slug, params.name);
@@ -14,33 +21,33 @@ export default function ExerciseDetailScreen() {
   return (
     <Screen
       title={metadata.name}
-      subtitle={metadata.shortDescription ?? "Exercise details will expand here as the local movement library grows."}
+      subtitle={metadata.shortDescription ?? "Movement notes for this exercise are still growing, but the essentials will keep getting sharper."}
       footer={<PrimaryButton label="Back to workout" onPress={() => router.back()} variant="ghost" />}
     >
       <Image source={metadata.image} style={styles.image} resizeMode="cover" />
 
-      <SectionCard title="Overview" eyebrow={metadata.isFallback ? "Starter metadata" : "Exercise detail"}>
+      <SectionCard title="Movement snapshot" eyebrow={metadata.isFallback ? "Starter guidance" : "Exercise detail"}>
         <Text style={styles.copy}>
-          {metadata.shortDescription ?? "This movement is included in your plan, but a richer description has not been added yet."}
+          {metadata.shortDescription ?? "This movement is in your plan, and deeper coaching notes are still on the way."}
         </Text>
         <Text style={styles.metaLine}>
-          Location: {metadata.workoutLocation.length ? metadata.workoutLocation.join(" / ") : "home / gym"}
+          Best fit: {metadata.workoutLocation.length ? metadata.workoutLocation.join(" / ") : "home / gym"}
         </Text>
         <Text style={styles.metaLine}>
-          Equipment: {metadata.equipment.length ? metadata.equipment.join(", ") : "See your workout plan for setup guidance"}
+          Gear: {metadata.equipment.length ? metadata.equipment.join(", ") : "Check your workout plan for setup cues"}
         </Text>
       </SectionCard>
 
-      <SectionCard title="Muscles worked" eyebrow="Target areas">
+      <SectionCard title="Muscles worked" eyebrow="What it hits">
         <Text style={styles.metaLine}>
-          Primary: {metadata.primaryMuscles.length ? metadata.primaryMuscles.join(", ") : "Details coming soon"}
+          Primary: {metadata.primaryMuscles.length ? metadata.primaryMuscles.join(", ") : "More detail coming soon"}
         </Text>
         <Text style={styles.metaLine}>
-          Secondary: {metadata.secondaryMuscles.length ? metadata.secondaryMuscles.join(", ") : "Details coming soon"}
+          Secondary: {metadata.secondaryMuscles.length ? metadata.secondaryMuscles.join(", ") : "More detail coming soon"}
         </Text>
       </SectionCard>
 
-      <SectionCard title="How to do it" eyebrow="Step by step">
+      <SectionCard title="How to move through it" eyebrow="Step by step">
         {metadata.stepByStepInstructions.length ? (
           metadata.stepByStepInstructions.map((step, index) => (
             <Text key={`${metadata.slug}-step-${index}`} style={styles.listItem}>
@@ -49,12 +56,12 @@ export default function ExerciseDetailScreen() {
           ))
         ) : (
           <Text style={styles.copy}>
-            Step-by-step coaching notes are still being added for this movement. Use the exercise notes in your workout plan for now.
+            Step-by-step coaching notes are still being built out for this movement. For now, lean on the cues in your workout plan and keep the reps controlled.
           </Text>
         )}
       </SectionCard>
 
-      <SectionCard title="Tips" eyebrow="Coach cues">
+      <SectionCard title="Coach cues" eyebrow="Keep it clean">
         {metadata.tips.length ? (
           metadata.tips.map((tip) => (
             <Text key={tip} style={styles.listItem}>
@@ -62,11 +69,11 @@ export default function ExerciseDetailScreen() {
             </Text>
           ))
         ) : (
-          <Text style={styles.copy}>Detailed coaching tips are coming soon for this exercise.</Text>
+          <Text style={styles.copy}>More coaching cues are on the way for this movement.</Text>
         )}
       </SectionCard>
 
-      <SectionCard title="Common mistakes" eyebrow="Move clean">
+      <SectionCard title="Common misses" eyebrow="Stay sharp">
         {metadata.commonMistakes.length ? (
           metadata.commonMistakes.map((mistake) => (
             <Text key={mistake} style={styles.listItem}>
@@ -74,7 +81,46 @@ export default function ExerciseDetailScreen() {
             </Text>
           ))
         ) : (
-          <Text style={styles.copy}>Common mistake notes are still being added for this movement.</Text>
+          <Text style={styles.copy}>Common slip-up notes are still being added for this movement.</Text>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Smart swaps" eyebrow="Keep the pattern">
+        {metadata.substitutions.length ? (
+          metadata.substitutions.map((substitution) => {
+            const content = (
+              <View style={styles.substitutionCard}>
+                <Text style={styles.substitutionType}>{formatSubstitutionType(substitution.type)}</Text>
+                <Text style={styles.substitutionName}>{substitution.name}</Text>
+                <Text style={styles.copy}>{substitution.reason}</Text>
+                <Text style={styles.substitutionLink}>
+                  {substitution.existsInLibrary ? "Open swap notes" : "Swap notes coming soon"}
+                </Text>
+              </View>
+            );
+
+            if (substitution.existsInLibrary) {
+              return (
+                <Pressable
+                  key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/exercise/[slug]" as never,
+                      params: { slug: substitution.slug, name: substitution.name } as never,
+                    } as never)
+                  }
+                >
+                  {content}
+                </Pressable>
+              );
+            }
+
+            return <View key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}>{content}</View>;
+          })
+        ) : (
+          <Text style={styles.copy}>
+            Swap suggestions haven’t been added for this movement yet. Check back as the Nerdie Blaq Fit movement library grows.
+          </Text>
         )}
       </SectionCard>
     </Screen>
@@ -104,5 +150,30 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     lineHeight: 21,
+  },
+  substitutionCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 18,
+    borderColor: colors.border,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  substitutionType: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  substitutionName: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  substitutionLink: {
+    color: colors.primarySoft,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 19,
   },
 });

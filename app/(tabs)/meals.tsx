@@ -13,10 +13,10 @@ export default function MealsScreen() {
 
   if (!isComplete || !guidance) {
     return (
-      <Screen title="Meals" subtitle="Nutrition guidance appears here once your profile is complete enough to support a safe general recommendation.">
-        <SectionCard title="Nutrition guidance unavailable" eyebrow="Complete onboarding">
+      <Screen title="Meals" subtitle="Your nutrition targets show up here once your profile is complete enough to support a safe recommendation.">
+        <SectionCard title="Your meal guidance starts with your profile" eyebrow="Finish setup">
           <Text style={styles.copy}>
-            Add your goal, weight, activity level, and dietary preference in onboarding so Nerdie Blaq Fit can generate your first nutrition targets.
+            Add your goal, weight, activity level, and food preference in onboarding so Nerdie Blaq Fit can build your first set of targets.
           </Text>
         </SectionCard>
       </Screen>
@@ -24,7 +24,7 @@ export default function MealsScreen() {
   }
 
   return (
-    <Screen title="Meals" subtitle="General nutrition targets and simple meal structure based on your saved profile.">
+    <Screen title="Meals" subtitle="Simple daily targets and meal structure built from your saved profile.">
       <SectionCard title="Daily targets" eyebrow={guidance.goalLabel}>
         <View style={styles.statsRow}>
           <StatChip label="Calories" value={`${guidance.calorieTarget}`} />
@@ -34,7 +34,7 @@ export default function MealsScreen() {
           <StatChip label="Water" value={`${guidance.waterTargetLiters}L`} />
         </View>
         <Text style={styles.helperText}>
-          These are general wellness-oriented estimates, not a medical prescription.
+          These are general wellness-focused estimates, not medical advice.
         </Text>
       </SectionCard>
 
@@ -51,7 +51,7 @@ export default function MealsScreen() {
         ))}
       </SectionCard>
 
-      <SectionCard title="Supplement suggestions" eyebrow="Optional categories">
+      <SectionCard title="Supplement ideas" eyebrow="Optional support">
         {guidance.supplementSuggestions.map((group) => (
           <View key={group.category} style={styles.mealBlock}>
             <Text style={styles.mealTitle}>{group.category}</Text>
@@ -64,7 +64,7 @@ export default function MealsScreen() {
         ))}
       </SectionCard>
 
-      <SectionCard title="Built from your profile" eyebrow="Source of truth">
+      <SectionCard title="Built from your profile" eyebrow="Your source data">
         <Text style={styles.copy}>
           Goal: {profile.fitnessGoal?.replace("-", " ")} | Activity: {profile.activityLevel?.replace("-", " ")} | Diet:{" "}
           {profile.dietaryPreference?.replace("-", " ")}

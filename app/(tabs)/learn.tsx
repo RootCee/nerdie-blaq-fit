@@ -34,10 +34,10 @@ export default function LearnScreen() {
 
   if (!learnArticles.length) {
     return (
-      <Screen title="Learn" subtitle="Education can live here as explainers, short-form lessons, and habit coaching.">
-        <SectionCard title="Content shelf" eyebrow="Knowledge">
+      <Screen title="Learn" subtitle="Practical education, coaching notes, and smarter fitness context live here.">
+        <SectionCard title="Library coming online" eyebrow="Knowledge">
           <Text style={styles.copy}>
-            Local education content has not been added yet. This tab will populate as the article library grows.
+            The Learn library is still growing. New reads will land here as Nerdie Blaq Fit builds out the knowledge base.
           </Text>
         </SectionCard>
       </Screen>
@@ -45,12 +45,12 @@ export default function LearnScreen() {
   }
 
   return (
-    <Screen title="Learn" subtitle="A local library of practical fitness education you can revisit anytime.">
+    <Screen title="Learn" subtitle="A practical fitness library you can come back to anytime.">
       <SectionCard title="Education hub" eyebrow="Knowledge">
         <Text style={styles.copy}>
-          Build better decisions with short reads on fat loss, muscle gain, recovery, hydration, supplements, mindset, and beginner-friendly fundamentals.
+          Sharpen your decisions with short reads on fat loss, muscle gain, recovery, hydration, supplements, mindset, and beginner-friendly fundamentals.
         </Text>
-        <Text style={styles.filterHint}>Browse by category or keep it wide open with All.</Text>
+        <Text style={styles.filterHint}>Browse by category, or keep the whole shelf open with All.</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -78,11 +78,11 @@ export default function LearnScreen() {
 
       {!filteredArticles.length ? (
         <SectionCard
-          title="Nothing in this category yet"
+          title="Nothing in this lane yet"
           eyebrow={formatFilterLabel(selectedFilter)}
         >
           <Text style={styles.copy}>
-            This category is ready for more articles soon. Switch filters to explore the rest of the library.
+            This lane will fill out soon. Switch filters to explore the rest of the library.
           </Text>
         </SectionCard>
       ) : null}
@@ -103,7 +103,7 @@ export default function LearnScreen() {
               <Text style={styles.metaText}>{article.estimatedReadTimeMinutes} min read</Text>
               <Text style={styles.metaText}>{article.tags.join(" • ")}</Text>
             </View>
-            <Text style={styles.linkText}>Open article</Text>
+            <Text style={styles.linkText}>Read article</Text>
           </SectionCard>
         </Pressable>
       ))}

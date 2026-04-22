@@ -15,12 +15,12 @@ export default function LearnArticleScreen() {
     return (
       <Screen
         title="Learn"
-        subtitle="This article could not be found."
+        subtitle="This read isn’t available right now."
         footer={<PrimaryButton label="Back to learn" onPress={() => router.back()} variant="ghost" />}
       >
-        <SectionCard title="Article unavailable" eyebrow="Try again">
+        <SectionCard title="Article not available" eyebrow="Try again">
           <Text style={styles.copy}>
-            The content you selected is not available right now. Head back to the Learn tab and choose another topic.
+            That article isn’t ready right now. Head back to Learn and pick another topic that fits what you need today.
           </Text>
         </SectionCard>
       </Screen>
@@ -33,8 +33,8 @@ export default function LearnArticleScreen() {
       subtitle={article.shortSummary}
       footer={<PrimaryButton label="Back to learn" onPress={() => router.back()} variant="ghost" />}
     >
-      <SectionCard title="Article overview" eyebrow={article.category.replace("-", " ")}>
-        <Text style={styles.metaLine}>Estimated read: {article.estimatedReadTimeMinutes} min</Text>
+      <SectionCard title="Quick take" eyebrow={article.category.replace("-", " ")}>
+        <Text style={styles.metaLine}>Read time: {article.estimatedReadTimeMinutes} min</Text>
         <View style={styles.tagsRow}>
           {article.tags.map((tag) => (
             <View key={tag} style={styles.tag}>
@@ -44,7 +44,7 @@ export default function LearnArticleScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Read" eyebrow="Education hub">
+      <SectionCard title="Full read" eyebrow="Education hub">
         {article.fullContent.map((paragraph, index) => (
           <Text key={`${article.slug}-${index}`} style={styles.copy}>
             {paragraph}

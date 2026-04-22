@@ -32,23 +32,23 @@ export default function OnboardingScreen() {
     switch (step) {
       case 0:
         return {
-          title: "Build your fit profile",
-          subtitle: "Tell Nerdie Blaq Fit who you are so the next phase can personalize coaching, workouts, and nutrition.",
+          title: "Build your base",
+          subtitle: "Give Nerdie Blaq Fit your real-world starting point so your coaching, training, and nutrition feel made for you.",
         };
       case 1:
         return {
-          title: "Shape your training plan",
-          subtitle: "We’ll use your goal, activity level, and experience to tune intensity and weekly flow.",
+          title: "Shape your training lane",
+          subtitle: "Your goal, activity level, and experience help set the right rhythm, volume, and pace for the week ahead.",
         };
       case 2:
         return {
-          title: "Train where you are",
-          subtitle: "Home setup, gym access, and equipment choices will drive future routine recommendations.",
+          title: "Train with what you have",
+          subtitle: "Your setup matters. We’ll use your space and equipment to keep the plan practical, not fantasy.",
         };
       default:
         return {
-          title: "Fuel and protect progress",
-          subtitle: "Nutrition preferences and limitations help us keep plans realistic and sustainable.",
+          title: "Fuel progress, protect progress",
+          subtitle: "Your food preferences and movement limits help us build something sustainable, not something you’ll outgrow in a week.",
         };
     }
   }, [step]);
@@ -84,7 +84,7 @@ export default function OnboardingScreen() {
         <View style={styles.footerRow}>
           {step > 0 ? <PrimaryButton label="Back" onPress={() => setStep((current) => current - 1)} variant="ghost" /> : null}
           <PrimaryButton
-            label={isSaving ? "Saving..." : step === totalSteps - 1 ? "Finish onboarding" : "Continue"}
+            label={isSaving ? "Saving your setup..." : step === totalSteps - 1 ? "Finish setup" : "Keep going"}
             onPress={() => void handleNext()}
             style={styles.primaryButton}
           />
@@ -93,17 +93,17 @@ export default function OnboardingScreen() {
     >
       <LinearGradient colors={["#18181B", "#101114", "#050505"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
         <Text style={styles.eyebrow}>Nerdie Blaq Fit</Text>
-        <Text style={styles.heroTitle}>Smart fitness with style, structure, and your real-life context.</Text>
+        <Text style={styles.heroTitle}>Smart fitness with structure, style, and room for real life.</Text>
         <ProgressDots activeIndex={step} count={totalSteps} />
         <Text style={styles.helperText}>
-          Saving mode: {storageMode === "supabase" ? "Supabase" : "Local fallback"}
+          Save mode: {storageMode === "supabase" ? "Supabase connected" : "Local backup mode"}
         </Text>
       </LinearGradient>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       {step === 0 ? (
-        <SectionCard title="Personal details" eyebrow="Step 1">
+        <SectionCard title="Personal details" eyebrow="Step 1 of 4">
           <FormField
             label="Age"
             value={profile.age}
@@ -131,7 +131,7 @@ export default function OnboardingScreen() {
       ) : null}
 
       {step === 1 ? (
-        <SectionCard title="Training profile" eyebrow="Step 2">
+        <SectionCard title="Training profile" eyebrow="Step 2 of 4">
           <View style={styles.group}>
             <Text style={styles.label}>Activity level</Text>
             <OptionChips
@@ -160,7 +160,7 @@ export default function OnboardingScreen() {
       ) : null}
 
       {step === 2 ? (
-        <SectionCard title="Environment" eyebrow="Step 3">
+        <SectionCard title="Training setup" eyebrow="Step 3 of 4">
           <View style={styles.group}>
             <Text style={styles.label}>Workout location</Text>
             <OptionChips
@@ -181,7 +181,7 @@ export default function OnboardingScreen() {
       ) : null}
 
       {step === 3 ? (
-        <SectionCard title="Recovery and nutrition" eyebrow="Step 4">
+        <SectionCard title="Recovery and nutrition" eyebrow="Step 4 of 4">
           <View style={styles.group}>
             <Text style={styles.label}>Dietary preference</Text>
             <OptionChips
@@ -194,7 +194,7 @@ export default function OnboardingScreen() {
             label="Injuries or limitations"
             value={profile.injuriesOrLimitations}
             onChangeText={(value) => updateProfile({ injuriesOrLimitations: value })}
-            placeholder="Low back pain, shoulder restriction, knee sensitivity..."
+            placeholder="Low back sensitivity, shoulder limits, knee discomfort..."
             multiline
             numberOfLines={4}
             textAlignVertical="top"

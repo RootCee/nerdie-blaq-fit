@@ -1,6 +1,15 @@
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
 import { toExerciseSlug } from "@/features/workouts/exercise-library";
-import { SupportedWorkoutGoal, WorkoutDay, WorkoutExercise, WorkoutPlan, WorkoutPlannerInput } from "@/types/workout";
+import {
+  CoreFinisherBlock,
+  CoreFinisherEmphasis,
+  SupportedWorkoutGoal,
+  WorkoutDay,
+  WorkoutExercise,
+  WorkoutPlan,
+  WorkoutPlannerInput,
+  WorkoutSupersetGroup,
+} from "@/types/workout";
 
 type ExerciseLibrary = {
   push: string[];
@@ -166,14 +175,72 @@ function pick(list: string[], index: number): string {
   return list[index % list.length];
 }
 
+function createCoreFinisher(
+  emphasis: CoreFinisherEmphasis,
+  index: number,
+): CoreFinisherBlock {
+  const frontCoreOptions = ["Dead bug", "Plank", "Hollow hold", "Bird dog"];
+  const sideCoreOptions = ["Side plank", "Bird dog", "Slow mountain climber", "Dead bug"];
+
+  if (emphasis === "front-core-trunk-stability") {
+    return {
+      title: "Core finisher",
+      emphasis,
+      notes: "A short trunk-stability finish to reinforce bracing without adding too much fatigue.",
+      exercises: [
+        exercise(frontCoreOptions[index % frontCoreOptions.length], "2", "8-12 reps or 20-30 sec", "15 sec", "Brace first, then move slowly."),
+        exercise(frontCoreOptions[(index + 1) % frontCoreOptions.length], "2", "20-30 sec", "30 sec", "Breathe behind the brace and stay stacked."),
+      ],
+    };
+  }
+
+  return {
+    title: "Core finisher",
+    emphasis,
+    notes: "A short side-core and anti-rotation finish to build control without draining recovery.",
+    exercises: [
+      exercise(sideCoreOptions[index % sideCoreOptions.length], "2", "20-30 sec each side", "15 sec", "Stay long through the spine."),
+      exercise(sideCoreOptions[(index + 1) % sideCoreOptions.length], "2", "8-10 each side", "30 sec", "Move cleanly and keep the ribs quiet."),
+    ],
+  };
+}
+
+function createSupersetGroup(
+  id: string,
+  title: string,
+  exercises: WorkoutExercise[],
+  restAfterGroup: string,
+  notes: string,
+): WorkoutSupersetGroup {
+  return {
+    id,
+    title,
+    exerciseSlugs: exercises.map((entry) => entry.slug ?? toExerciseSlug(entry.name)),
+    restAfterGroup,
+    notes,
+  };
+}
+
 function buildDay(
   id: string,
   title: string,
   focus: string,
   notes: string,
   exercises: WorkoutExercise[],
+  options?: {
+    coreFinisher?: CoreFinisherBlock | null;
+    supersets?: WorkoutSupersetGroup[];
+  },
 ): WorkoutDay {
-  return { id, title, focus, notes, exercises };
+  return {
+    id,
+    title,
+    focus,
+    notes,
+    exercises,
+    coreFinisher: options?.coreFinisher ?? null,
+    supersets: options?.supersets ?? [],
+  };
 }
 
 function buildFullBodyDays(
@@ -184,30 +251,51 @@ function buildFullBodyDays(
 ): WorkoutDay[] {
   const prescription = getPrescription(goal, experience);
 
-  return Array.from({ length: trainingDays }).map((_, index) =>
-    buildDay(
+  return Array.from({ length: trainingDays }).map((_, index) => {
+    const mainExercises = [
+      exercise(pick(library.squat, index), prescription.sets, prescription.reps, prescription.rest, "Own the tempo on the lowering phase."),
+      exercise(pick(library.push, index), prescription.sets, prescription.reps, prescription.rest, "Stop each set before form breaks."),
+      exercise(pick(library.pull, index), prescription.sets, prescription.reps, prescription.rest, "Pause briefly at peak contraction."),
+      exercise(pick(library.hinge, index), prescription.sets, prescription.reps, prescription.rest, "Brace before each rep."),
+      exercise(
+        pick(library.conditioning, index),
+        goal === "muscle-gain" ? "2" : "3",
+        goal === "muscle-gain" ? "5-8 min" : "8-12 min",
+        "As needed",
+        goal === "muscle-gain" ? "Keep conditioning easy enough to preserve recovery." : "Sustainable pace over all-out effort.",
+      ),
+    ];
+    const coreFinisher = createCoreFinisher(index % 2 === 0 ? "front-core-trunk-stability" : "obliques-side-core", index);
+
+    return buildDay(
       `day-${index + 1}`,
       `Day ${index + 1}: Full Body`,
       index % 2 === 0 ? "Squat + push emphasis" : "Hinge + pull emphasis",
       goal === "fat-loss"
         ? "Move briskly between exercises while keeping form crisp."
         : "Leave 1-2 reps in reserve on most sets for steady weekly progress.",
-      [
-        exercise(pick(library.squat, index), prescription.sets, prescription.reps, prescription.rest, "Own the tempo on the lowering phase."),
-        exercise(pick(library.push, index), prescription.sets, prescription.reps, prescription.rest, "Stop each set before form breaks."),
-        exercise(pick(library.pull, index), prescription.sets, prescription.reps, prescription.rest, "Pause briefly at peak contraction."),
-        exercise(pick(library.hinge, index), prescription.sets, prescription.reps, prescription.rest, "Brace before each rep."),
-        exercise(pick(library.core, index), "2-3", "20-40 sec", "30-45 sec", "Slow breathing and controlled tension."),
-        exercise(
-          pick(library.conditioning, index),
-          goal === "muscle-gain" ? "2" : "3",
-          goal === "muscle-gain" ? "5-8 min" : "8-12 min",
-          "As needed",
-          goal === "muscle-gain" ? "Keep conditioning easy enough to preserve recovery." : "Sustainable pace over all-out effort.",
-        ),
-      ],
-    ),
-  );
+      mainExercises,
+      {
+        supersets: [
+          createSupersetGroup(
+            `day-${index + 1}-superset-1`,
+            "Accessory push/pull superset",
+            [mainExercises[1], mainExercises[2]],
+            goal === "fat-loss" ? "45-60 sec after both exercises" : "60-75 sec after both exercises",
+            "Alternate the lighter press and pull before resting.",
+          ),
+          createSupersetGroup(
+            `day-${index + 1}-core-finisher`,
+            "Core finisher superset",
+            coreFinisher.exercises,
+            "30 sec after both exercises",
+            "Move between the two core drills, then rest briefly.",
+          ),
+        ],
+        coreFinisher,
+      },
+    );
+  });
 }
 
 function buildSplitDays(
@@ -217,69 +305,111 @@ function buildSplitDays(
   experience: WorkoutExperience,
 ): WorkoutDay[] {
   const prescription = getPrescription(goal, experience);
+
+  const dayOneExercises = [
+    exercise(pick(library.push, 0), prescription.sets, prescription.reps, prescription.rest, "Make the first set your technique benchmark."),
+    exercise(pick(library.pull, 0), prescription.sets, prescription.reps, prescription.rest, "Drive elbows, not hands."),
+    exercise(pick(library.push, 1), prescription.sets, prescription.reps, prescription.rest, "Smooth reps beat sloppy load jumps."),
+    exercise(pick(library.pull, 1), prescription.sets, prescription.reps, prescription.rest, "Own the last rep."),
+  ];
+  const dayOneCoreFinisher = createCoreFinisher("front-core-trunk-stability", 0);
   const upperOne = buildDay(
     "day-1",
     "Day 1: Upper Strength",
     "Push + pull foundation",
     "Start the week with controlled compounds and full range of motion.",
-    [
-      exercise(pick(library.push, 0), prescription.sets, prescription.reps, prescription.rest, "Make the first set your technique benchmark."),
-      exercise(pick(library.pull, 0), prescription.sets, prescription.reps, prescription.rest, "Drive elbows, not hands."),
-      exercise(pick(library.push, 1), prescription.sets, prescription.reps, prescription.rest, "Smooth reps beat sloppy load jumps."),
-      exercise(pick(library.pull, 1), prescription.sets, prescription.reps, prescription.rest, "Own the last rep."),
-      exercise(pick(library.core, 0), "2-3", "20-40 sec", "30-45 sec", "Finish with trunk stability."),
-    ],
+    dayOneExercises,
+    {
+      supersets: [
+        createSupersetGroup("day-1-superset-1", "Accessory upper superset", [dayOneExercises[2], dayOneExercises[3]], "60 sec after both exercises", "Pair the later upper-body accessories before resting."),
+        createSupersetGroup("day-1-core-finisher", "Core finisher superset", dayOneCoreFinisher.exercises, "30 sec after both exercises", "Short front-core finish for trunk stability."),
+      ],
+      coreFinisher: dayOneCoreFinisher,
+    },
   );
+
+  const dayTwoExercises = [
+    exercise(pick(library.squat, 0), prescription.sets, prescription.reps, prescription.rest, "Use a depth you can control well."),
+    exercise(pick(library.hinge, 0), prescription.sets, prescription.reps, prescription.rest, "Keep ribs stacked over hips."),
+    exercise(pick(library.squat, 1), prescription.sets, prescription.reps, prescription.rest, "Work both legs evenly."),
+    exercise(pick(library.hinge, 1), prescription.sets, prescription.reps, prescription.rest, "No rushed reps."),
+  ];
+  const dayTwoCoreFinisher = createCoreFinisher("obliques-side-core", 1);
   const lowerOne = buildDay(
     "day-2",
     "Day 2: Lower Body",
     "Squat + hinge patterning",
     "Keep the lower body work controlled and joint-friendly.",
-    [
-      exercise(pick(library.squat, 0), prescription.sets, prescription.reps, prescription.rest, "Use a depth you can control well."),
-      exercise(pick(library.hinge, 0), prescription.sets, prescription.reps, prescription.rest, "Keep ribs stacked over hips."),
-      exercise(pick(library.squat, 1), prescription.sets, prescription.reps, prescription.rest, "Work both legs evenly."),
-      exercise(pick(library.hinge, 1), prescription.sets, prescription.reps, prescription.rest, "No rushed reps."),
-      exercise(pick(library.core, 1), "2-3", "20-40 sec", "30-45 sec", "Stable trunk, calm breathing."),
-    ],
+    dayTwoExercises,
+    {
+      supersets: [
+        createSupersetGroup("day-2-superset-1", "Accessory lower superset", [dayTwoExercises[2], dayTwoExercises[3]], "60 sec after both exercises", "Pair the later lower-body accessories before resting."),
+        createSupersetGroup("day-2-core-finisher", "Core finisher superset", dayTwoCoreFinisher.exercises, "30 sec after both exercises", "Wrap with short side-core work."),
+      ],
+      coreFinisher: dayTwoCoreFinisher,
+    },
   );
+
+  const dayThreeExercises = [
+    exercise(pick(library.push, 2), prescription.sets, prescription.reps, prescription.rest, "Focus on smooth control."),
+    exercise(pick(library.pull, 2), prescription.sets, prescription.reps, prescription.rest, "Own the squeeze at the top."),
+    exercise(pick(library.push, 3), prescription.sets, prescription.reps, prescription.rest, "Stop shy of technical failure."),
+    exercise(pick(library.pull, 3), prescription.sets, prescription.reps, prescription.rest, "Use the full line of pull."),
+    exercise(pick(library.conditioning, 0), goal === "muscle-gain" ? "2" : "3", goal === "muscle-gain" ? "5-8 min" : "8-12 min", "As needed", "Nasal breathing pace if possible."),
+  ];
   const upperTwo = buildDay(
     "day-3",
     "Day 3: Upper Volume",
     "Hypertrophy and shoulder-friendly pressing",
     "Chase quality muscle work without grinding reps.",
-    [
-      exercise(pick(library.push, 2), prescription.sets, prescription.reps, prescription.rest, "Focus on smooth control."),
-      exercise(pick(library.pull, 2), prescription.sets, prescription.reps, prescription.rest, "Own the squeeze at the top."),
-      exercise(pick(library.push, 3), prescription.sets, prescription.reps, prescription.rest, "Stop shy of technical failure."),
-      exercise(pick(library.pull, 3), prescription.sets, prescription.reps, prescription.rest, "Use the full line of pull."),
-      exercise(pick(library.conditioning, 0), goal === "muscle-gain" ? "2" : "3", goal === "muscle-gain" ? "5-8 min" : "8-12 min", "As needed", "Nasal breathing pace if possible."),
-    ],
+    dayThreeExercises,
+    {
+      supersets: [
+        createSupersetGroup("day-3-superset-1", "Accessory press/row superset", [dayThreeExercises[2], dayThreeExercises[3]], "45-60 sec after both exercises", "Use this pairing to keep upper-body volume efficient."),
+      ],
+    },
   );
+
+  const dayFourExercises = [
+    exercise(pick(library.squat, 2), prescription.sets, prescription.reps, prescription.rest, "Stay balanced through the whole foot."),
+    exercise(pick(library.hinge, 2), prescription.sets, prescription.reps, prescription.rest, "Use a strong brace each set."),
+    exercise(pick(library.squat, 3), prescription.sets, prescription.reps, prescription.rest, "Choose control over speed."),
+    exercise(pick(library.hinge, 3), prescription.sets, prescription.reps, prescription.rest, "Pause briefly at the top."),
+  ];
+  const dayFourCoreFinisher = createCoreFinisher("front-core-trunk-stability", 2);
   const lowerTwo = buildDay(
     "day-4",
     "Day 4: Lower Volume",
     "Single-leg work and glute strength",
     "Finish strong with stable lower-body volume and core control.",
-    [
-      exercise(pick(library.squat, 2), prescription.sets, prescription.reps, prescription.rest, "Stay balanced through the whole foot."),
-      exercise(pick(library.hinge, 2), prescription.sets, prescription.reps, prescription.rest, "Use a strong brace each set."),
-      exercise(pick(library.squat, 3), prescription.sets, prescription.reps, prescription.rest, "Choose control over speed."),
-      exercise(pick(library.hinge, 3), prescription.sets, prescription.reps, prescription.rest, "Pause briefly at the top."),
-      exercise(pick(library.core, 2), "2-3", "20-40 sec", "30-45 sec", "Low back stays quiet."),
-    ],
+    dayFourExercises,
+    {
+      supersets: [
+        createSupersetGroup("day-4-superset-1", "Accessory lower superset", [dayFourExercises[2], dayFourExercises[3]], "60 sec after both exercises", "Pair the later lower-body work to save time."),
+        createSupersetGroup("day-4-core-finisher", "Core finisher superset", dayFourCoreFinisher.exercises, "30 sec after both exercises", "Short trunk-stability work to finish the day cleanly."),
+      ],
+      coreFinisher: dayFourCoreFinisher,
+    },
   );
+
+  const conditioningExercises = [
+    exercise(pick(library.conditioning, 1), "3-4", "8-12 min", "60 sec", "Steady sustainable pace."),
+    exercise(pick(library.conditioning, 2), "3", "45 sec", "30 sec", "Light, crisp movement."),
+  ];
+  const conditioningCoreFinisher = createCoreFinisher("obliques-side-core", 3);
   const conditioning = buildDay(
     "day-5",
     "Day 5: Conditioning + Core",
     "Aerobic work and recovery support",
     "Keep this day challenging but not punishing so the week stays sustainable.",
-    [
-      exercise(pick(library.conditioning, 1), "3-4", "8-12 min", "60 sec", "Steady sustainable pace."),
-      exercise(pick(library.conditioning, 2), "3", "45 sec", "30 sec", "Light, crisp movement."),
-      exercise(pick(library.core, 3), "3", "20-30 sec", "30 sec", "Stay tucked and controlled."),
-      exercise(pick(library.core, 4), "2-3", "8-12 each side", "30 sec", "Move slowly and stay square."),
-    ],
+    conditioningExercises,
+    {
+      supersets: [
+        createSupersetGroup("day-5-conditioning-superset", "Conditioning superset", conditioningExercises, "45 sec after both blocks", "Alternate the two conditioning pieces before resting."),
+        createSupersetGroup("day-5-core-finisher", "Core finisher superset", conditioningCoreFinisher.exercises, "30 sec after both exercises", "Finish with low-stress side-core work."),
+      ],
+      coreFinisher: conditioningCoreFinisher,
+    },
   );
 
   return [upperOne, lowerOne, upperTwo, lowerTwo, conditioning].slice(0, trainingDays);
@@ -314,10 +444,10 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
           : "Strong Foundations Week",
     summary:
       goal === "fat-loss"
-        ? "A balanced weekly structure with strength work plus steady conditioning support."
+        ? "A balanced weekly structure with strength work, short core finishers, and steady conditioning support."
         : goal === "muscle-gain"
-          ? "A progressive split built around enough volume to drive muscle without unnecessary fluff."
-          : "A practical weekly plan that improves strength, movement quality, and consistency.",
+          ? "A progressive split built around enough volume to drive muscle, with small supersets to keep accessory work efficient."
+          : "A practical weekly plan that improves strength, movement quality, and consistency without overcomplicating recovery.",
     trainingDays,
     goal,
     experience,
@@ -328,6 +458,8 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
       "Start each session with 5-8 minutes of easy warm-up and joint prep.",
       "Keep 1-2 reps in reserve on most sets unless an exercise note says otherwise.",
       "If an exercise bothers a joint, swap it for a similar movement pattern and pain-free range.",
+      "Supersets pair two lighter movements back to back before resting.",
+      "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
     ],
     days,
   };

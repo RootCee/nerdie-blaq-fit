@@ -17,7 +17,26 @@ import {
 import { getOnboardingPersistenceConfig } from "@/lib/supabase";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { colors, spacing } from "@/theme";
-import { WorkoutDayLog, WorkoutPlan } from "@/types/workout";
+import { GroupedWorkoutExerciseDisplay, WorkoutDay, WorkoutDayLog, WorkoutPlan } from "@/types/workout";
+
+function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
+  const supersetsBySlug = new Map(
+    (day.supersets ?? []).flatMap((superset) =>
+      superset.exerciseSlugs.map((slug, index) => [slug, { superset, positionInSuperset: index + 1 }] as const),
+    ),
+  );
+
+  return day.exercises.map((exercise) => {
+    const key = exercise.slug ?? toExerciseSlug(exercise.name);
+    const match = supersetsBySlug.get(key);
+
+    return {
+      exercise,
+      superset: match?.superset ?? null,
+      positionInSuperset: match?.positionInSuperset ?? null,
+    };
+  });
+}
 
 export default function WorkoutScreen() {
   const { profile, isComplete } = useOnboardingStore();
@@ -133,10 +152,10 @@ export default function WorkoutScreen() {
 
   if (!isComplete || !generatedPlan) {
     return (
-      <Screen title="Workout" subtitle="Your weekly plan appears here once onboarding is complete and your training preferences are set.">
-        <SectionCard title="No plan yet" eyebrow="Complete onboarding">
+      <Screen title="Workout" subtitle="Your weekly training plan shows up here once your setup is complete.">
+        <SectionCard title="Your plan starts with onboarding" eyebrow="Finish setup">
           <Text style={styles.copy}>
-            Finish onboarding with your goal, experience, activity level, and workout location so Nerdie Blaq Fit can build your first weekly training split.
+            Lock in your goal, experience, activity level, and training location so Nerdie Blaq Fit can build your first week with intention.
           </Text>
         </SectionCard>
       </Screen>
@@ -146,10 +165,10 @@ export default function WorkoutScreen() {
   if (isLoadingPlan) {
     return (
       <Screen title="Workout" subtitle="Loading your active training plan.">
-        <SectionCard title="Fetching plan" eyebrow="Please wait">
+        <SectionCard title="Pulling up your plan" eyebrow="One sec">
           <View style={styles.loadingState}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.copy}>Bringing in your saved weekly plan.</Text>
+            <Text style={styles.copy}>Bringing your saved training week into view.</Text>
           </View>
         </SectionCard>
       </Screen>
@@ -158,20 +177,20 @@ export default function WorkoutScreen() {
 
   if (!plan) {
     return (
-      <Screen title="Workout" subtitle="Your plan could not be loaded right now.">
-        <SectionCard title="Plan unavailable" eyebrow="Try again">
+      <Screen title="Workout" subtitle="Your plan isn’t available right now.">
+        <SectionCard title="Plan not ready yet" eyebrow="Try again">
           <Text style={styles.copy}>
-            {error ?? "We could not load or generate your workout plan just yet."}
+            {error ?? "We couldn’t pull in your training week just yet."}
           </Text>
-          <PrimaryButton label="Regenerate Plan" onPress={() => void handleRegeneratePlan()} />
+          <PrimaryButton label="Build plan again" onPress={() => void handleRegeneratePlan()} />
         </SectionCard>
       </Screen>
     );
   }
 
   return (
-    <Screen title="Workout" subtitle="A deterministic weekly plan built from your saved profile and current training setup.">
-      <SectionCard title={plan.title} eyebrow="Generated weekly plan">
+    <Screen title="Workout" subtitle="Your current training week, built from your saved profile and setup.">
+      <SectionCard title={plan.title} eyebrow="Your current plan">
         <Text style={styles.copy}>{plan.summary}</Text>
         <View style={styles.statsRow}>
           <StatChip label="Days" value={String(plan.trainingDays)} />
@@ -180,14 +199,14 @@ export default function WorkoutScreen() {
           <StatChip label="Level" value={plan.experience} />
         </View>
         <PrimaryButton
-          label={isRegenerating ? "Regenerating..." : "Regenerate Plan"}
+          label={isRegenerating ? "Refreshing plan..." : "Refresh plan"}
           onPress={() => void handleRegeneratePlan()}
           variant="ghost"
         />
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </SectionCard>
 
-      <SectionCard title="Plan notes" eyebrow="How to use it">
+      <SectionCard title="Plan notes" eyebrow="How to use this week">
         {plan.notes.map((note) => (
           <Text key={note} style={styles.noteItem}>
             • {note}
@@ -200,11 +219,11 @@ export default function WorkoutScreen() {
           <View style={styles.dayHeaderRow}>
             <View style={[styles.statusBadge, dayLogs[day.id]?.isCompleted ? styles.completedBadge : styles.pendingBadge]}>
               <Text style={styles.statusText}>
-                {dayLogs[day.id]?.isCompleted ? "Completed" : isLoadingLogs ? "Loading..." : "Pending"}
+                {dayLogs[day.id]?.isCompleted ? "Complete" : isLoadingLogs ? "Checking..." : "Ready"}
               </Text>
             </View>
             <PrimaryButton
-              label={dayLogs[day.id]?.isCompleted ? "Update Log" : "Log Workout"}
+              label={dayLogs[day.id]?.isCompleted ? "Update session" : "Start session"}
               onPress={() =>
                 router.push({
                   pathname: "/workout-session/[dayId]" as never,
@@ -220,12 +239,27 @@ export default function WorkoutScreen() {
           <Text style={styles.dayNotes}>{day.notes}</Text>
           {dayLogs[day.id]?.completedAt ? (
             <Text style={styles.completedAtText}>
-              Finished on {new Date(dayLogs[day.id].completedAt as string).toLocaleDateString()}
+              Logged on {new Date(dayLogs[day.id].completedAt as string).toLocaleDateString()}
             </Text>
           ) : null}
 
-          {day.exercises.map((item) => (
-            <View key={`${day.id}-${item.name}`} style={styles.exerciseCard}>
+          {getGroupedExercises(day).map(({ exercise: item, superset, positionInSuperset }) => (
+            <View
+              key={`${day.id}-${item.name}`}
+              style={[
+                styles.exerciseCard,
+                superset ? styles.supersetExerciseCard : null,
+              ]}
+            >
+              {superset ? (
+                <View style={styles.supersetHeader}>
+                  <Text style={styles.supersetLabel}>
+                    {superset.title} • Move {positionInSuperset} of {superset.exerciseSlugs.length}
+                  </Text>
+                  <Text style={styles.supersetNotes}>{superset.notes}</Text>
+                  <Text style={styles.supersetRest}>Rest: {superset.restAfterGroup}</Text>
+                </View>
+              ) : null}
               <Pressable
                 onPress={() =>
                   router.push({
@@ -238,7 +272,7 @@ export default function WorkoutScreen() {
                 }
               >
                 <Text style={styles.exerciseName}>{item.name}</Text>
-                <Text style={styles.exerciseLink}>Open exercise details</Text>
+                <Text style={styles.exerciseLink}>View movement notes</Text>
               </Pressable>
               <View style={styles.metaRow}>
                 <Text style={styles.metaText}>Sets: {item.sets}</Text>
@@ -248,9 +282,32 @@ export default function WorkoutScreen() {
               <Text style={styles.exerciseNotes}>{item.notes}</Text>
             </View>
           ))}
+
+          {day.coreFinisher ? (
+            <View style={styles.coreFinisherCard}>
+              <Text style={styles.coreFinisherTitle}>{day.coreFinisher.title}</Text>
+              <Text style={styles.coreFinisherEyebrow}>
+                {day.coreFinisher.emphasis === "front-core-trunk-stability"
+                  ? "Front core / trunk stability"
+                  : "Obliques / side core"}
+              </Text>
+              <Text style={styles.exerciseNotes}>{day.coreFinisher.notes}</Text>
+              {day.coreFinisher.exercises.map((item) => (
+                <View key={`${day.id}-core-${item.name}`} style={styles.coreFinisherExercise}>
+                  <Text style={styles.exerciseName}>{item.name}</Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaText}>Sets: {item.sets}</Text>
+                    <Text style={styles.metaText}>Reps: {item.reps}</Text>
+                    <Text style={styles.metaText}>Rest: {item.restTime}</Text>
+                  </View>
+                  <Text style={styles.exerciseNotes}>{item.notes}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </SectionCard>
       ))}
-      <SectionCard title="Built from your profile" eyebrow="Source of truth">
+      <SectionCard title="Built from your profile" eyebrow="Your source data">
         <Text style={styles.copy}>
           Goal: {profile.fitnessGoal?.replace("-", " ")} | Experience: {profile.workoutExperience} | Location:{" "}
           {profile.workoutLocation}
@@ -330,6 +387,27 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
+  supersetExerciseCard: {
+    borderColor: colors.primary,
+  },
+  supersetHeader: {
+    gap: 2,
+  },
+  supersetLabel: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  supersetNotes: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  supersetRest: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "600",
+  },
   exerciseName: {
     color: colors.text,
     fontSize: 16,
@@ -355,6 +433,28 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  coreFinisherCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 20,
+    borderColor: colors.accent,
+    borderWidth: 1,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  coreFinisherTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  coreFinisherEyebrow: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  coreFinisherExercise: {
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
   },
   errorText: {
     color: colors.danger,
