@@ -56,6 +56,22 @@ export interface WorkoutDayLog {
   exerciseLogs: WorkoutExerciseLog[];
 }
 
+export interface WorkoutHistoryItem {
+  dayId: string;
+  dayTitle: string;
+  completedAt: string;
+  completionStatus: "completed";
+  exerciseSummary: string;
+  notesPreview: string | null;
+  loggedExerciseCount: number;
+}
+
+export interface WorkoutMotivationStats {
+  workoutsCompletedThisWeek: number;
+  totalCompletedSessions: number;
+  currentStreak: number;
+}
+
 export interface StoredWorkoutDayLogRow {
   user_id: string;
   day_id: string;

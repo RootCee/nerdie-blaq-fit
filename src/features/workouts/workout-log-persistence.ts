@@ -1,6 +1,6 @@
 import { ensureSupabaseSession, getAuthenticatedSupabaseUserId, getOnboardingPersistenceConfig, supabase } from "@/lib/supabase";
 import { toExerciseSlug } from "@/features/workouts/exercise-library";
-import { WorkoutDay, WorkoutDayLog, WorkoutExerciseLog, StoredWorkoutDayLogRow } from "@/types/workout";
+import { WorkoutDay, WorkoutDayLog, WorkoutExerciseLog, WorkoutHistoryItem, StoredWorkoutDayLogRow } from "@/types/workout";
 
 export function buildWorkoutDayLog(day: WorkoutDay, existingLog?: WorkoutDayLog | null): WorkoutDayLog {
   const existingBySlug = new Map(
@@ -74,6 +74,50 @@ export async function loadWorkoutDayLogs(): Promise<Record<string, WorkoutDayLog
       return [log.dayId, log];
     }),
   );
+}
+
+function summarizeExerciseLog(entry: WorkoutExerciseLog) {
+  const sets = entry.completedSets || "0";
+  const reps = entry.reps || "-";
+  const weight = entry.weightUsed ? ` @ ${entry.weightUsed}` : "";
+
+  return `${entry.exerciseName}: ${sets} sets x ${reps}${weight}`;
+}
+
+function mapWorkoutDayLogToHistoryItem(log: WorkoutDayLog): WorkoutHistoryItem | null {
+  if (!log.isCompleted || !log.completedAt) {
+    return null;
+  }
+
+  const notesPreview =
+    log.exerciseLogs
+      .map((entry) => entry.notes.trim())
+      .find(Boolean) ?? null;
+
+  const exerciseSummary = log.exerciseLogs
+    .slice(0, 2)
+    .map(summarizeExerciseLog)
+    .join(" • ");
+
+  return {
+    dayId: log.dayId,
+    dayTitle: log.dayTitle,
+    completedAt: log.completedAt,
+    completionStatus: "completed",
+    exerciseSummary,
+    notesPreview,
+    loggedExerciseCount: log.exerciseLogs.length,
+  };
+}
+
+export async function loadWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
+  const logsByDay = await loadWorkoutDayLogs();
+  const history = Object.values(logsByDay)
+    .map(mapWorkoutDayLogToHistoryItem)
+    .filter((item): item is WorkoutHistoryItem => Boolean(item))
+    .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+  return history;
 }
 
 export async function loadWorkoutDayLog(dayId: string): Promise<WorkoutDayLog | null> {
