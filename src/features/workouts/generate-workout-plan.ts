@@ -1,4 +1,5 @@
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
+import { toExerciseSlug } from "@/features/workouts/exercise-library";
 import { SupportedWorkoutGoal, WorkoutDay, WorkoutExercise, WorkoutPlan, WorkoutPlannerInput } from "@/types/workout";
 
 type ExerciseLibrary = {
@@ -158,7 +159,7 @@ function getPrescription(goal: SupportedWorkoutGoal, experience: WorkoutExperien
 }
 
 function exercise(name: string, sets: string, reps: string, restTime: string, notes: string): WorkoutExercise {
-  return { name, sets, reps, restTime, notes };
+  return { slug: toExerciseSlug(name), name, sets, reps, restTime, notes };
 }
 
 function pick(list: string[], index: number): string {

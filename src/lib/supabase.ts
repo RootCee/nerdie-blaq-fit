@@ -74,6 +74,17 @@ export async function ensureSupabaseSession(): Promise<Session | null> {
   return data.session;
 }
 
+export async function getAuthenticatedSupabaseUserId(): Promise<string> {
+  const session = await ensureSupabaseSession();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    throw new Error("Unable to resolve the authenticated Supabase user.");
+  }
+
+  return userId;
+}
+
 export function getOnboardingPersistenceConfig() {
   const config = getSupabaseConfig();
 
