@@ -106,7 +106,3 @@ export function assertSupabaseReady() {
   return { ...config, client: supabase };
 }
 
-// TODO: Add email/password auth alongside anonymous auth so users can upgrade
-// their existing account without losing onboarding history.
-// TODO: Add Apple sign-in for iOS account upgrades.
-// TODO: Add Google sign-in for cross-device account recovery and linking.
