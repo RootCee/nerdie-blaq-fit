@@ -9,17 +9,47 @@ import { deriveBodyWeightHistorySummary } from "@/features/body-weight/body-weig
 import { loadRecentBodyWeightHistory } from "@/features/body-weight/body-weight-persistence";
 import { deriveWorkoutMotivationStats } from "@/features/workouts/workout-history-stats";
 import { loadWorkoutHistory } from "@/features/workouts/workout-log-persistence";
+import { useOnboardingStore } from "@/store/onboarding-store";
 import { colors, spacing } from "@/theme";
 import { WorkoutHistoryItem, WorkoutMotivationStats } from "@/types/workout";
 import { BodyWeightHistorySummary } from "@/types/body-weight";
 
+function buildWeeklyRecapMessage(
+  workoutsCompletedThisWeek: number,
+  trendDirection: BodyWeightHistorySummary["trendDirection"],
+  distanceFromGoal: number | null,
+) {
+  if (workoutsCompletedThisWeek >= 4 && trendDirection === "steady") {
+    return "Strong week. You kept the work consistent and the scale steady, which is often exactly what solid progress looks like.";
+  }
+
+  if (workoutsCompletedThisWeek >= 3 && trendDirection === "down" && distanceFromGoal !== null && distanceFromGoal < 0) {
+    return "You stacked solid training with a downward weight trend. Keep the basics repeatable and let the week build on itself.";
+  }
+
+  if (workoutsCompletedThisWeek >= 3 && trendDirection === "up" && distanceFromGoal !== null && distanceFromGoal > 0) {
+    return "You trained well and your weight is moving upward toward your target. Stay patient and keep recovery in the plan.";
+  }
+
+  if (workoutsCompletedThisWeek >= 1) {
+    return "You put real work on the board this week. Stay steady, keep logging, and let the trend get clearer.";
+  }
+
+  return "A new week can turn quickly. One solid session and one honest check-in is enough to restart momentum.";
+}
+
 export default function ProgressScreen() {
+  const { profile } = useOnboardingStore();
   const [history, setHistory] = useState<WorkoutHistoryItem[]>([]);
   const [bodyWeightSummary, setBodyWeightSummary] = useState<BodyWeightHistorySummary>({
     latestWeight: null,
     latestLoggedOn: null,
     changeFromPrevious: null,
     entries: [],
+    trendDirection: "insufficient-data",
+    weeklyChange: null,
+    distanceFromGoal: null,
+    adjustmentSuggestion: null,
   });
   const [stats, setStats] = useState<WorkoutMotivationStats>({
     workoutsCompletedThisWeek: 0,
@@ -45,7 +75,13 @@ export default function ProgressScreen() {
           if (isMounted) {
             setHistory(items);
             setStats(deriveWorkoutMotivationStats(items));
-            setBodyWeightSummary(deriveBodyWeightHistorySummary(recentBodyWeightLogs));
+            setBodyWeightSummary(
+              deriveBodyWeightHistorySummary(recentBodyWeightLogs, {
+                goalWeight: profile.goalWeight,
+                goalPace: profile.goalPace,
+                currentWeight: profile.weight,
+              }),
+            );
             setError(null);
           }
         } catch (historyError) {
@@ -64,7 +100,7 @@ export default function ProgressScreen() {
       return () => {
         isMounted = false;
       };
-    }, []),
+    }, [profile.goalPace, profile.goalWeight, profile.weight]),
   );
 
   if (isLoading) {
@@ -79,6 +115,12 @@ export default function ProgressScreen() {
       </Screen>
     );
   }
+
+  const weeklyRecapMessage = buildWeeklyRecapMessage(
+    stats.workoutsCompletedThisWeek,
+    bodyWeightSummary.trendDirection,
+    bodyWeightSummary.distanceFromGoal,
+  );
 
   return (
     <Screen title="Progress" subtitle="A clear view of the work you’ve already put in.">
@@ -97,6 +139,33 @@ export default function ProgressScreen() {
         <Text style={styles.streakNote}>
           Current streak = consecutive calendar days with at least one completed workout, ending today or yesterday.
         </Text>
+      </SectionCard>
+
+      <SectionCard title="Weekly recap" eyebrow="Coach check-in">
+        <View style={styles.statsRow}>
+          <StatChip label="Workouts" value={String(stats.workoutsCompletedThisWeek)} />
+          <StatChip
+            label="Trend"
+            value={
+              bodyWeightSummary.trendDirection === "up"
+                ? "Up"
+                : bodyWeightSummary.trendDirection === "down"
+                  ? "Down"
+                  : bodyWeightSummary.trendDirection === "steady"
+                    ? "Steady"
+                    : "Building"
+            }
+          />
+          <StatChip
+            label="Goal gap"
+            value={
+              bodyWeightSummary.distanceFromGoal === null
+                ? "N/A"
+                : `${bodyWeightSummary.distanceFromGoal > 0 ? "+" : ""}${bodyWeightSummary.distanceFromGoal}`
+            }
+          />
+        </View>
+        <Text style={styles.copy}>{weeklyRecapMessage}</Text>
       </SectionCard>
 
       <SectionCard title="Body-weight check-in" eyebrow="Recent trend">
@@ -120,6 +189,31 @@ export default function ProgressScreen() {
             <Text style={styles.streakNote}>
               Change compares your latest check-in to the previous logged weight.
             </Text>
+            {(bodyWeightSummary.weeklyChange !== null || bodyWeightSummary.distanceFromGoal !== null || bodyWeightSummary.adjustmentSuggestion) ? (
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>Weekly direction</Text>
+                <Text style={styles.summaryCopy}>
+                  {bodyWeightSummary.trendDirection === "up"
+                    ? "Trending up"
+                    : bodyWeightSummary.trendDirection === "down"
+                      ? "Trending down"
+                      : bodyWeightSummary.trendDirection === "steady"
+                        ? "Holding steady"
+                        : "Building trend data"}
+                  {bodyWeightSummary.weeklyChange !== null
+                    ? ` • ${bodyWeightSummary.weeklyChange > 0 ? "+" : ""}${bodyWeightSummary.weeklyChange} this week`
+                    : ""}
+                </Text>
+                {bodyWeightSummary.distanceFromGoal !== null ? (
+                  <Text style={styles.summaryCopy}>
+                    Distance from goal weight: {bodyWeightSummary.distanceFromGoal > 0 ? "+" : ""}{bodyWeightSummary.distanceFromGoal}
+                  </Text>
+                ) : null}
+                {bodyWeightSummary.adjustmentSuggestion ? (
+                  <Text style={styles.summaryCopy}>{bodyWeightSummary.adjustmentSuggestion}</Text>
+                ) : null}
+              </View>
+            ) : null}
             <View style={styles.bodyWeightList}>
               {bodyWeightSummary.entries.map((entry) => (
                 <View key={entry.loggedOn} style={styles.bodyWeightRow}>
@@ -214,6 +308,24 @@ const styles = StyleSheet.create({
   },
   bodyWeightList: {
     gap: spacing.sm,
+  },
+  summaryCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  summaryTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  summaryCopy: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
   },
   bodyWeightRow: {
     alignItems: "center",

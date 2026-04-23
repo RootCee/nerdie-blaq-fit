@@ -1,4 +1,5 @@
 import { ActivityLevel, DietaryPreference, FitnessGoal } from "@/types/onboarding";
+import { calculateBmi, parseWeightInPounds } from "@/lib/body-metrics";
 import {
   NutritionGuidance,
   NutritionMacroRange,
@@ -6,22 +7,6 @@ import {
   NutritionPlannerInput,
   SupplementSuggestion,
 } from "@/types/nutrition";
-
-function parseWeightInPounds(weight: string) {
-  const numericWeight = Number.parseFloat(weight.replace(/[^0-9.]/g, ""));
-
-  if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
-    return null;
-  }
-
-  const normalized = weight.toLowerCase();
-
-  if (normalized.includes("kg")) {
-    return numericWeight * 2.20462;
-  }
-
-  return numericWeight;
-}
 
 function resolveGoal(goal: FitnessGoal | null) {
   if (goal === "fat-loss") {
@@ -51,6 +36,27 @@ function resolveGoal(goal: FitnessGoal | null) {
     carbs: { min: 150, max: 260 },
     fats: { min: 50, max: 80 },
   };
+}
+
+function resolvePaceAdjustment(goalWeight: string, currentWeight: string, goalPace: NutritionPlannerInput["goalPace"], fitnessGoal: FitnessGoal | null) {
+  const current = parseWeightInPounds(currentWeight);
+  const goal = parseWeightInPounds(goalWeight);
+
+  if (!current || !goal || !goalPace) {
+    return 0;
+  }
+
+  const delta = goal - current;
+
+  if (fitnessGoal === "muscle-gain" || delta > 0) {
+    return goalPace === "easy" ? 100 : goalPace === "steady" ? 175 : 250;
+  }
+
+  if (fitnessGoal === "fat-loss" || delta < 0) {
+    return goalPace === "easy" ? -100 : goalPace === "steady" ? -200 : -300;
+  }
+
+  return 0;
 }
 
 function resolveActivityMultiplier(activityLevel: ActivityLevel | null) {
@@ -169,7 +175,9 @@ export function generateNutritionGuidance(input: NutritionPlannerInput): Nutriti
   const goal = resolveGoal(input.fitnessGoal);
   const activityMultiplier = resolveActivityMultiplier(input.activityLevel);
   const calorieTarget = Math.round(weightInPounds * activityMultiplier + goal.calorieOffset);
-  const proteinTargetGrams = Math.round(weightInPounds * goal.proteinMultiplier);
+  const paceAdjustment = resolvePaceAdjustment(input.goalWeight, input.weight, input.goalPace, input.fitnessGoal);
+  const bmiSummary = calculateBmi(input.height, input.weight);
+  const proteinTargetGrams = Math.round(weightInPounds * (goal.proteinMultiplier + (input.goalPace === "aggressive" ? 0.05 : 0)));
   const waterTargetLiters = Number((weightInPounds * 0.5 / 33.814).toFixed(1));
 
   const activityCarbAdjustment =
@@ -189,7 +197,7 @@ export function generateNutritionGuidance(input: NutritionPlannerInput): Nutriti
         : 0;
 
   return {
-    calorieTarget,
+    calorieTarget: calorieTarget + paceAdjustment,
     proteinTargetGrams,
     carbsRangeGrams: clampRange(goal.carbs, activityCarbAdjustment),
     fatsRangeGrams: clampRange(goal.fats, activityFatAdjustment),
@@ -199,5 +207,7 @@ export function generateNutritionGuidance(input: NutritionPlannerInput): Nutriti
     dietaryPreference: input.dietaryPreference!,
     activityLevel: input.activityLevel!,
     goalLabel: goal.label,
+    bmiValue: bmiSummary?.value ?? null,
+    bmiCategory: bmiSummary?.category ?? null,
   };
 }

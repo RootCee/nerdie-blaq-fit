@@ -1,7 +1,9 @@
 import { DietaryPreference } from "@/types/onboarding";
-import { GroceryItem, GroceryList, MealPlan, MealPlanEntry } from "@/types/meal-plan";
+import { GroceryItem, GroceryList, MealPlan, MealPlanEntry, MealSubstitution } from "@/types/meal-plan";
 
-const MEAL_PLANS: Record<DietaryPreference, MealPlanEntry[]> = {
+type RawMealPlanEntry = Omit<MealPlanEntry, "estimatedCalories" | "substitutions">;
+
+const MEAL_PLANS: Record<DietaryPreference, RawMealPlanEntry[]> = {
   balanced: [
     {
       slot: "breakfast",
@@ -390,7 +392,89 @@ function buildGroceryList(meals: MealPlanEntry[]): GroceryList {
   };
 }
 
+function extractEstimatedCalories(portionGuidance: string) {
+  const match = portionGuidance.match(/~(\d+)\s*cal/i);
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
+function buildSameProteinSwap(dietaryPreference: DietaryPreference, proteinName: string | undefined): MealSubstitution | null {
+  if (!proteinName) {
+    return null;
+  }
+
+  const lowerProtein = proteinName.toLowerCase();
+  const plantForwardSwap =
+    dietaryPreference === "vegan"
+      ? "Swap in tofu, tempeh, or edamame for a similar protein anchor."
+      : dietaryPreference === "vegetarian"
+        ? "Swap in eggs, Greek yogurt, tofu, or paneer to keep the protein base strong."
+        : dietaryPreference === "pescatarian"
+          ? "Swap in tuna, salmon, Greek yogurt, or tofu for a similar protein hit."
+          : "Swap in chicken, turkey, Greek yogurt, tofu, or eggs to keep the protein similar.";
+
+  return {
+    type: "same-protein-swap",
+    title: "Same-protein swap",
+    detail: lowerProtein.includes("salmon") || lowerProtein.includes("cod") || lowerProtein.includes("tuna")
+      ? "Swap with another lean fish or Greek yogurt to keep the protein profile similar."
+      : plantForwardSwap,
+  };
+}
+
+function buildCarbSwap(carbName: string | undefined): MealSubstitution | null {
+  if (!carbName) {
+    return null;
+  }
+
+  return {
+    type: "carb-swap",
+    title: "Carb swap",
+    detail: `${carbName} can rotate with rice, oats, potatoes, quinoa, or whole-grain toast based on what you have handy.`,
+  };
+}
+
+function buildLighterOption(hasCarb: boolean, hasFat: boolean): MealSubstitution | null {
+  if (!hasCarb && !hasFat) {
+    return null;
+  }
+
+  return {
+    type: "lighter-option",
+    title: "Lighter option",
+    detail: hasCarb
+      ? "Trim the carb portion slightly, keep the protein steady, and add more vegetables or fruit for volume."
+      : "Keep the protein steady and scale back one added fat serving if you want a lighter version.",
+  };
+}
+
+function buildBudgetOption(proteinName: string | undefined, carbName: string | undefined): MealSubstitution {
+  return {
+    type: "budget-option",
+    title: "Budget option",
+    detail: proteinName && carbName
+      ? `Use a lower-cost protein like eggs, beans, or canned tuna and pair it with ${carbName.toLowerCase()} or another pantry carb.`
+      : "Use staples like eggs, beans, oats, rice, potatoes, or frozen vegetables to keep this meal practical and budget-friendly.",
+  };
+}
+
+function buildSubstitutions(meal: RawMealPlanEntry, dietaryPreference: DietaryPreference): MealSubstitution[] {
+  const proteinIngredient = meal.ingredients.find((ingredient) => ingredient.category === "protein");
+  const carbIngredient = meal.ingredients.find((ingredient) => ingredient.category === "carbs");
+  const hasFat = meal.ingredients.some((ingredient) => ingredient.category === "fats");
+
+  return [
+    buildSameProteinSwap(dietaryPreference, proteinIngredient?.name),
+    buildCarbSwap(carbIngredient?.name),
+    buildLighterOption(Boolean(carbIngredient), hasFat),
+    buildBudgetOption(proteinIngredient?.name, carbIngredient?.name),
+  ].filter((entry): entry is MealSubstitution => Boolean(entry));
+}
+
 export function generateMealPlan(dietaryPreference: DietaryPreference): MealPlan {
-  const meals = MEAL_PLANS[dietaryPreference];
+  const meals = MEAL_PLANS[dietaryPreference].map((meal) => ({
+    ...meal,
+    estimatedCalories: extractEstimatedCalories(meal.portionGuidance),
+    substitutions: buildSubstitutions(meal, dietaryPreference),
+  }));
   return { meals, groceryList: buildGroceryList(meals) };
 }

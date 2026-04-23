@@ -1,5 +1,6 @@
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
 import { toExerciseSlug } from "@/features/workouts/exercise-library";
+import { parseWeightInPounds } from "@/lib/body-metrics";
 import {
   CoreFinisherBlock,
   CoreFinisherEmphasis,
@@ -48,6 +49,9 @@ function resolveTrainingDays(
   goal: SupportedWorkoutGoal,
   experience: WorkoutExperience,
   activityLevel: WorkoutPlannerInput["activityLevel"],
+  goalPace: WorkoutPlannerInput["goalPace"],
+  weight: string,
+  goalWeight: string,
 ): number {
   const experienceBase: Record<WorkoutExperience, number> = {
     beginner: 3,
@@ -71,6 +75,18 @@ function resolveTrainingDays(
 
   if (activityLevel === "athlete" && experience === "advanced") {
     days = Math.min(6, days + 1);
+  }
+
+  const currentWeight = parseWeightInPounds(weight);
+  const targetWeight = parseWeightInPounds(goalWeight);
+  const weightDelta = currentWeight && targetWeight ? targetWeight - currentWeight : null;
+
+  if (goalPace === "aggressive" && goal === "fat-loss" && weightDelta !== null && weightDelta < 0) {
+    days = Math.min(5, days + 1);
+  }
+
+  if (goalPace === "easy" && goal === "muscle-gain" && weightDelta !== null && weightDelta > 0) {
+    days = Math.max(3, days - 1);
   }
 
   return days;
@@ -429,7 +445,14 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
   const location = resolveLocation(input.workoutLocation, input.availableEquipment);
   const activityLevel = input.activityLevel!;
   const equipment = input.availableEquipment;
-  const trainingDays = resolveTrainingDays(goal, experience, activityLevel);
+  const trainingDays = resolveTrainingDays(
+    goal,
+    experience,
+    activityLevel,
+    input.goalPace,
+    input.weight,
+    input.goalWeight,
+  );
   const library = buildExerciseLibrary(location, equipment);
   const days = trainingDays <= 3
     ? buildFullBodyDays(trainingDays, library, goal, experience)
@@ -460,6 +483,9 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
       "If an exercise bothers a joint, swap it for a similar movement pattern and pain-free range.",
       "Supersets pair two lighter movements back to back before resting.",
       "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
+      input.goalWeight
+        ? `Your current plan also tracks the direction toward ${input.goalWeight}${input.goalPace ? ` at an ${input.goalPace} pace` : ""}, using that as guidance instead of pressure.`
+        : "Your current weight trend can shape the pace of the plan, but it never overrides recovery and consistency.",
     ],
     days,
   };

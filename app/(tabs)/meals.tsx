@@ -40,6 +40,7 @@ export default function MealsScreen() {
   }
 
   const mealPlan = generateMealPlan(profile.dietaryPreference ?? "balanced");
+  const sampleDayCalories = mealPlan.meals.reduce((sum, meal) => sum + meal.estimatedCalories, 0);
 
   return (
     <Screen title="Meals" subtitle="Simple daily targets and meal structure built from your saved profile.">
@@ -53,6 +54,9 @@ export default function MealsScreen() {
         </View>
         <Text style={styles.helperText}>
           These are general wellness-focused estimates, not medical advice.
+        </Text>
+        <Text style={styles.helperText}>
+          Estimated sample day: {sampleDayCalories} calories across the meals below.
         </Text>
       </SectionCard>
 
@@ -72,7 +76,10 @@ export default function MealsScreen() {
       <SectionCard title="Meal prep guide" eyebrow="Concrete meals for your preference">
         {mealPlan.meals.map((meal) => (
           <View key={meal.slot} style={styles.prepCard}>
-            <Text style={styles.prepSlot}>{SLOT_LABELS[meal.slot]}</Text>
+            <View style={styles.prepHeader}>
+              <Text style={styles.prepSlot}>{SLOT_LABELS[meal.slot]}</Text>
+              <Text style={styles.prepCalories}>{meal.estimatedCalories} cal</Text>
+            </View>
             <Text style={styles.prepTitle}>{meal.title}</Text>
             <Text style={styles.prepDesc}>{meal.description}</Text>
             {meal.ingredients.map((ingredient) => (
@@ -81,6 +88,16 @@ export default function MealsScreen() {
               </Text>
             ))}
             <Text style={styles.portionHint}>{meal.portionGuidance}</Text>
+            {meal.substitutions?.length ? (
+              <View style={styles.substitutionsBlock}>
+                <Text style={styles.substitutionsTitle}>Easy swaps</Text>
+                {meal.substitutions.map((swap) => (
+                  <Text key={`${meal.slot}-${swap.type}`} style={styles.listItem}>
+                    • {swap.title}: {swap.detail}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
           </View>
         ))}
       </SectionCard>
@@ -164,12 +181,23 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     padding: spacing.md,
   },
+  prepHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   prepSlot: {
     color: colors.primarySoft,
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  prepCalories: {
+    color: colors.accentSoft,
+    fontSize: 12,
+    fontWeight: "700",
   },
   prepTitle: {
     color: colors.text,
@@ -187,6 +215,18 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 18,
     marginTop: spacing.xs,
+  },
+  substitutionsBlock: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  substitutionsTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "700",
   },
   groceryCategory: {
     gap: spacing.xs,

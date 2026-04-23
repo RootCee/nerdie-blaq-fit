@@ -26,10 +26,12 @@ export interface NutritionGuidance {
   dietaryPreference: DietaryPreference;
   activityLevel: ActivityLevel;
   goalLabel: string;
+  bmiValue: number | null;
+  bmiCategory: string | null;
 }
 
 export interface NutritionPlannerInput
   extends Pick<
     OnboardingProfile,
-    "fitnessGoal" | "weight" | "activityLevel" | "dietaryPreference"
+    "fitnessGoal" | "weight" | "goalWeight" | "goalPace" | "height" | "activityLevel" | "dietaryPreference"
   > {}

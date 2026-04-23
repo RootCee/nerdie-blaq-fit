@@ -28,6 +28,8 @@ export type DietaryPreference =
   | "keto"
   | "low-carb";
 
+export type GoalPace = "easy" | "steady" | "aggressive";
+
 export type EquipmentOption =
   | "none"
   | "resistance-bands"
@@ -43,6 +45,8 @@ export interface OnboardingProfile {
   sex: Sex | null;
   height: string;
   weight: string;
+  goalWeight: string;
+  goalPace: GoalPace | null;
   activityLevel: ActivityLevel | null;
   fitnessGoal: FitnessGoal | null;
   workoutExperience: WorkoutExperience | null;
@@ -67,6 +71,8 @@ export interface SupabaseProfileRow {
   sex: Sex | null;
   height: string | null;
   weight: string | null;
+  goal_weight?: string | null;
+  goal_pace?: GoalPace | null;
   activity_level: ActivityLevel | null;
   fitness_goal: FitnessGoal | null;
   workout_experience: WorkoutExperience | null;

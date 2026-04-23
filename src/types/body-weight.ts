@@ -25,4 +25,8 @@ export interface BodyWeightHistorySummary {
   latestLoggedOn: string | null;
   changeFromPrevious: number | null;
   entries: BodyWeightHistoryItem[];
+  trendDirection: "up" | "down" | "steady" | "insufficient-data";
+  weeklyChange: number | null;
+  distanceFromGoal: number | null;
+  adjustmentSuggestion: string | null;
 }

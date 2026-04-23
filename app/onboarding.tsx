@@ -14,11 +14,13 @@ import {
   dietaryPreferenceOptions,
   equipmentOptions,
   fitnessGoalOptions,
+  goalPaceOptions,
   sexOptions,
   workoutExperienceOptions,
   workoutLocationOptions,
 } from "@/constants/options";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { calculateBmi } from "@/lib/body-metrics";
 import { colors, spacing } from "@/theme";
 import { EquipmentOption } from "@/types/onboarding";
 
@@ -27,6 +29,7 @@ const totalSteps = 4;
 export default function OnboardingScreen() {
   const { profile, updateProfile, completeOnboarding, isSaving, error, storageMode } = useOnboardingStore();
   const [step, setStep] = useState(0);
+  const bmiSummary = useMemo(() => calculateBmi(profile.height, profile.weight), [profile.height, profile.weight]);
 
   const stepTitle = useMemo(() => {
     switch (step) {
@@ -123,6 +126,18 @@ export default function OnboardingScreen() {
             onChangeText={(value) => updateProfile({ weight: value })}
             placeholder="165 lb or 75 kg"
           />
+          <FormField
+            label="Goal weight"
+            value={profile.goalWeight}
+            onChangeText={(value) => updateProfile({ goalWeight: value })}
+            placeholder="150 lb or 68 kg"
+          />
+          {bmiSummary ? (
+            <View style={styles.bmiCard}>
+              <Text style={styles.bmiTitle}>BMI: {bmiSummary.value} • {bmiSummary.category}</Text>
+              <Text style={styles.helperText}>{bmiSummary.message}</Text>
+            </View>
+          ) : null}
           <View style={styles.group}>
             <Text style={styles.label}>Sex</Text>
             <OptionChips options={sexOptions} value={profile.sex} onChange={(value) => updateProfile({ sex: value })} />
@@ -146,6 +161,14 @@ export default function OnboardingScreen() {
               options={fitnessGoalOptions}
               value={profile.fitnessGoal}
               onChange={(value) => updateProfile({ fitnessGoal: value })}
+            />
+          </View>
+          <View style={styles.group}>
+            <Text style={styles.label}>Goal pace</Text>
+            <OptionChips
+              options={goalPaceOptions}
+              value={profile.goalPace}
+              onChange={(value) => updateProfile({ goalPace: value })}
             />
           </View>
           <View style={styles.group}>
@@ -232,6 +255,19 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: spacing.sm,
+  },
+  bmiCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  bmiTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
   },
   errorText: {
     color: colors.danger,

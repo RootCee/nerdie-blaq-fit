@@ -210,5 +210,5 @@ export interface ExerciseSubstitution {
 export interface WorkoutPlannerInput
   extends Pick<
     OnboardingProfile,
-    "fitnessGoal" | "workoutExperience" | "workoutLocation" | "availableEquipment" | "activityLevel"
+    "fitnessGoal" | "workoutExperience" | "workoutLocation" | "availableEquipment" | "activityLevel" | "weight" | "goalWeight" | "goalPace"
   > {}

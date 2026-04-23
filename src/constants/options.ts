@@ -3,6 +3,7 @@ import {
   DietaryPreference,
   EquipmentOption,
   FitnessGoal,
+  GoalPace,
   Sex,
   WorkoutExperience,
   WorkoutLocation,
@@ -63,4 +64,10 @@ export const dietaryPreferenceOptions: Array<{ label: string; value: DietaryPref
   { label: "Pescatarian", value: "pescatarian" },
   { label: "Keto", value: "keto" },
   { label: "Low carb", value: "low-carb" },
+];
+
+export const goalPaceOptions: Array<{ label: string; value: GoalPace }> = [
+  { label: "Easy", value: "easy" },
+  { label: "Steady", value: "steady" },
+  { label: "Aggressive", value: "aggressive" },
 ];
