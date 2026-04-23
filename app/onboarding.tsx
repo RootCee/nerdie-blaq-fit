@@ -9,6 +9,7 @@ import { MultiSelectChips, OptionChips } from "@/components/ui/OptionChips";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { parseHeightInMeters, parseWeightInPounds } from "@/lib/body-metrics";
 import {
   activityLevelOptions,
   dietaryPreferenceOptions,
@@ -22,14 +23,108 @@ import {
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { calculateBmi } from "@/lib/body-metrics";
 import { colors, spacing } from "@/theme";
-import { EquipmentOption } from "@/types/onboarding";
+import { EquipmentOption, OnboardingProfile } from "@/types/onboarding";
 
 const totalSteps = 4;
+const saveErrorMessage = "We couldn't save your setup right now. Please try again in a moment.";
+
+type StepErrors = Partial<Record<keyof OnboardingProfile, string>>;
+
+function validateAge(age: string) {
+  const numericAge = Number.parseInt(age.trim(), 10);
+
+  if (!age.trim()) {
+    return "Enter your age.";
+  }
+
+  if (!Number.isFinite(numericAge) || numericAge < 13 || numericAge > 120) {
+    return "Enter a valid age between 13 and 120.";
+  }
+
+  return null;
+}
+
+function validateStep(profile: OnboardingProfile, stepIndex: number): StepErrors {
+  const errors: StepErrors = {};
+
+  if (stepIndex === 0) {
+    const ageError = validateAge(profile.age);
+    if (ageError) errors.age = ageError;
+
+    if (!profile.height.trim()) {
+      errors.height = "Enter your height.";
+    } else if (!parseHeightInMeters(profile.height)) {
+      errors.height = "Enter a valid height like 5'8 or 173 cm.";
+    }
+
+    if (!profile.weight.trim()) {
+      errors.weight = "Enter your current weight.";
+    } else if (!parseWeightInPounds(profile.weight)) {
+      errors.weight = "Enter a valid weight like 165 lb or 75 kg.";
+    }
+
+    if (!profile.goalWeight.trim()) {
+      errors.goalWeight = "Enter your goal weight.";
+    } else if (!parseWeightInPounds(profile.goalWeight)) {
+      errors.goalWeight = "Enter a valid goal weight like 150 lb or 68 kg.";
+    }
+
+    if (!profile.sex) {
+      errors.sex = "Choose the option that fits you best.";
+    }
+  }
+
+  if (stepIndex === 1) {
+    if (!profile.activityLevel) {
+      errors.activityLevel = "Select your current activity level.";
+    }
+
+    if (!profile.fitnessGoal) {
+      errors.fitnessGoal = "Select your main fitness goal.";
+    }
+
+    if (!profile.goalPace) {
+      errors.goalPace = "Select the pace you want to follow.";
+    }
+
+    if (!profile.workoutExperience) {
+      errors.workoutExperience = "Select your workout experience.";
+    }
+  }
+
+  if (stepIndex === 2) {
+    if (!profile.workoutLocation) {
+      errors.workoutLocation = "Choose where you plan to work out.";
+    }
+
+    if (profile.availableEquipment.length === 0) {
+      errors.availableEquipment = "Pick at least one option, even if it's None.";
+    }
+  }
+
+  if (stepIndex === 3 && !profile.dietaryPreference) {
+    errors.dietaryPreference = "Select the eating style that fits you best.";
+  }
+
+  return errors;
+}
+
+function getFirstInvalidStep(profile: OnboardingProfile) {
+  for (let stepIndex = 0; stepIndex < totalSteps; stepIndex += 1) {
+    if (Object.keys(validateStep(profile, stepIndex)).length > 0) {
+      return stepIndex;
+    }
+  }
+
+  return null;
+}
 
 export default function OnboardingScreen() {
   const { profile, updateProfile, completeOnboarding, isSaving, error, storageMode } = useOnboardingStore();
   const [step, setStep] = useState(0);
   const bmiSummary = useMemo(() => calculateBmi(profile.height, profile.weight), [profile.height, profile.weight]);
+  const currentStepErrors = useMemo(() => validateStep(profile, step), [profile, step]);
+  const isCurrentStepValid = Object.keys(currentStepErrors).length === 0;
 
   const stepTitle = useMemo(() => {
     switch (step) {
@@ -67,7 +162,18 @@ export default function OnboardingScreen() {
 
   const handleNext = async () => {
     if (step < totalSteps - 1) {
+      if (!isCurrentStepValid) {
+        return;
+      }
+
       setStep((current) => current + 1);
+      return;
+    }
+
+    const firstInvalidStep = getFirstInvalidStep(profile);
+
+    if (firstInvalidStep !== null) {
+      setStep(firstInvalidStep);
       return;
     }
 
@@ -79,6 +185,8 @@ export default function OnboardingScreen() {
     }
   };
 
+  const saveError = error === saveErrorMessage ? error : null;
+
   return (
     <Screen
       title={stepTitle.title}
@@ -89,6 +197,7 @@ export default function OnboardingScreen() {
           <PrimaryButton
             label={isSaving ? "Saving your setup..." : step === totalSteps - 1 ? "Finish setup" : "Keep going"}
             onPress={() => void handleNext()}
+            disabled={isSaving || !isCurrentStepValid}
             style={styles.primaryButton}
           />
         </View>
@@ -103,7 +212,7 @@ export default function OnboardingScreen() {
         </Text>
       </LinearGradient>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {saveError ? <Text style={styles.errorText}>{saveError}</Text> : null}
 
       {step === 0 ? (
         <SectionCard title="Personal details" eyebrow="Step 1 of 4">
@@ -113,24 +222,28 @@ export default function OnboardingScreen() {
             onChangeText={(value) => updateProfile({ age: value })}
             keyboardType="number-pad"
             placeholder="29"
+            helper={currentStepErrors.age}
           />
           <FormField
             label="Height"
             value={profile.height}
             onChangeText={(value) => updateProfile({ height: value })}
             placeholder="5'8 or 173 cm"
+            helper={currentStepErrors.height}
           />
           <FormField
             label="Weight"
             value={profile.weight}
             onChangeText={(value) => updateProfile({ weight: value })}
             placeholder="165 lb or 75 kg"
+            helper={currentStepErrors.weight}
           />
           <FormField
             label="Goal weight"
             value={profile.goalWeight}
             onChangeText={(value) => updateProfile({ goalWeight: value })}
             placeholder="150 lb or 68 kg"
+            helper={currentStepErrors.goalWeight}
           />
           {bmiSummary ? (
             <View style={styles.bmiCard}>
@@ -141,6 +254,7 @@ export default function OnboardingScreen() {
           <View style={styles.group}>
             <Text style={styles.label}>Sex</Text>
             <OptionChips options={sexOptions} value={profile.sex} onChange={(value) => updateProfile({ sex: value })} />
+            {currentStepErrors.sex ? <Text style={styles.inlineError}>{currentStepErrors.sex}</Text> : null}
           </View>
         </SectionCard>
       ) : null}
@@ -154,6 +268,7 @@ export default function OnboardingScreen() {
               value={profile.activityLevel}
               onChange={(value) => updateProfile({ activityLevel: value })}
             />
+            {currentStepErrors.activityLevel ? <Text style={styles.inlineError}>{currentStepErrors.activityLevel}</Text> : null}
           </View>
           <View style={styles.group}>
             <Text style={styles.label}>Fitness goal</Text>
@@ -162,6 +277,7 @@ export default function OnboardingScreen() {
               value={profile.fitnessGoal}
               onChange={(value) => updateProfile({ fitnessGoal: value })}
             />
+            {currentStepErrors.fitnessGoal ? <Text style={styles.inlineError}>{currentStepErrors.fitnessGoal}</Text> : null}
           </View>
           <View style={styles.group}>
             <Text style={styles.label}>Goal pace</Text>
@@ -170,6 +286,7 @@ export default function OnboardingScreen() {
               value={profile.goalPace}
               onChange={(value) => updateProfile({ goalPace: value })}
             />
+            {currentStepErrors.goalPace ? <Text style={styles.inlineError}>{currentStepErrors.goalPace}</Text> : null}
           </View>
           <View style={styles.group}>
             <Text style={styles.label}>Workout experience</Text>
@@ -178,6 +295,7 @@ export default function OnboardingScreen() {
               value={profile.workoutExperience}
               onChange={(value) => updateProfile({ workoutExperience: value })}
             />
+            {currentStepErrors.workoutExperience ? <Text style={styles.inlineError}>{currentStepErrors.workoutExperience}</Text> : null}
           </View>
         </SectionCard>
       ) : null}
@@ -191,6 +309,7 @@ export default function OnboardingScreen() {
               value={profile.workoutLocation}
               onChange={(value) => updateProfile({ workoutLocation: value })}
             />
+            {currentStepErrors.workoutLocation ? <Text style={styles.inlineError}>{currentStepErrors.workoutLocation}</Text> : null}
           </View>
           <View style={styles.group}>
             <Text style={styles.label}>Available equipment</Text>
@@ -199,6 +318,7 @@ export default function OnboardingScreen() {
               values={profile.availableEquipment}
               onToggle={toggleEquipment}
             />
+            {currentStepErrors.availableEquipment ? <Text style={styles.inlineError}>{currentStepErrors.availableEquipment}</Text> : null}
           </View>
         </SectionCard>
       ) : null}
@@ -212,6 +332,7 @@ export default function OnboardingScreen() {
               value={profile.dietaryPreference}
               onChange={(value) => updateProfile({ dietaryPreference: value })}
             />
+            {currentStepErrors.dietaryPreference ? <Text style={styles.inlineError}>{currentStepErrors.dietaryPreference}</Text> : null}
           </View>
           <FormField
             label="Injuries or limitations"
@@ -273,6 +394,11 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 14,
     lineHeight: 20,
+  },
+  inlineError: {
+    color: colors.danger,
+    fontSize: 12,
+    lineHeight: 18,
   },
   label: {
     color: colors.text,

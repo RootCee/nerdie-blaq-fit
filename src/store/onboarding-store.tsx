@@ -206,7 +206,7 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
             ...current,
             isSaving: false,
             storageMode: "supabase",
-            error: error.message,
+            error: "We couldn't save your setup right now. Please try again in a moment.",
           }));
           throw error;
         }
