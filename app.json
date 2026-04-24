@@ -22,7 +22,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

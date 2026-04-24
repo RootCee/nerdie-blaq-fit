@@ -52,6 +52,11 @@ export interface WorkoutPlan {
   weekIndex?: number;
   completedWorkoutCount?: number;
   advancedIntensityPhase?: "base" | "burnout" | "tempo";
+  planStartDate?: string;
+  programLengthWeeks?: number;
+  currentWeekIndex?: number;
+  currentProgramDay?: number;
+  estimatedCompletionDate?: string;
   title: string;
   summary: string;
   trainingDays: number;

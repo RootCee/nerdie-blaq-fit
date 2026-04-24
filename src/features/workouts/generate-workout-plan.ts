@@ -768,14 +768,14 @@ function buildAdvancedBodybuildingDays(
   const legsTwo = applyAdvancedIntensityTechniques(legsTwoBase, intensityPhase);
 
   return [
-    buildDay("day-1", "Mon: Chest + Back + Abs", "Arnold Variation #1 chest and back", "Advanced 60-75 minute muscle-build day. Pyramid your early sets, use clean reps, and let the final quality set on pulls approach failure when called for. Scale volume down if recovery slips.", chestBackOne, {
+    buildDay("day-1", "Mon: Chest + Back + Abs", "Blaq Mass Chest + Back", "Advanced 60-75 minute muscle-build day. Pyramid your early sets, use clean reps, and let the final quality set on pulls approach failure when called for. Scale volume down if recovery slips.", chestBackOne, {
       coreFinisher: chestBackOneAbs,
       supersets: [
         createSupersetGroup("day-1-chest-superset", "Chest expansion superset", [chestBackOne[2], chestBackOne[3]], "60 sec after both exercises", "Pair the fly with the pullover after your main presses. Keep the reps smooth and chest-driven."),
         createSupersetGroup("day-1-back-superset", "Back density superset", [chestBackOne[4], chestBackOne[5]], "75-90 sec after both exercises", "Alternate the wide-grip pull-up and bent-over row once your shoulders and trunk are ready."),
       ],
     }),
-    buildDay("day-2", "Tue: Shoulders + Arms + Forearms + Abs", "Arnold Variation #1 shoulders and arms", "High-volume advanced upper-body work. Keep isolation strict, respect the short rests, and stop only when form starts to break. Scale volume if elbows or shoulders stop recovering.", shouldersArmsOne, {
+    buildDay("day-2", "Tue: Shoulders + Arms + Forearms + Abs", "Blaq Mass Arms + Delts", "High-volume advanced upper-body work. Keep isolation strict, respect the short rests, and stop only when form starts to break. Scale volume if elbows or shoulders stop recovering.", shouldersArmsOne, {
       coreFinisher: shouldersArmsOneAbs,
       supersets: [
         createSupersetGroup("day-2-shoulder-superset-1", "Shoulder cap superset", [shouldersArmsOne[2], shouldersArmsOne[3]], "45-60 sec after both exercises", "Run the front raise and lateral raise together for dense delt volume."),
@@ -785,13 +785,13 @@ function buildAdvancedBodybuildingDays(
         createSupersetGroup("day-2-forearm-superset", "Forearm finish superset", [shouldersArmsOne[11], shouldersArmsOne[12]], "30-45 sec after both exercises", "Alternate palms-up and palms-down wrist work before resting."),
       ],
     }),
-    buildDay("day-3", "Wed: Legs + Lower Back + Abs", "Arnold Variation #1 legs and lower back", "This is the lower-body and lower-back day. Keep the hinges disciplined, let squats own the session, and scale volume if lower-back recovery suffers.", legsOne, {
+    buildDay("day-3", "Wed: Legs + Lower Back + Abs", "Blaq Mass Legs + Foundation", "This is the lower-body and lower-back day. Keep the hinges disciplined, let squats own the session, and scale volume if lower-back recovery suffers.", legsOne, {
       coreFinisher: legsOneAbs,
       supersets: [
         createSupersetGroup("day-3-leg-superset", "Quad and hamstring superset", [legsOne[2], legsOne[3]], "60 sec after both exercises", "Use the leg extension and leg curl as a dense lower-body accessory pairing after the main squat and lunge work."),
       ],
     }),
-    buildDay("day-4", "Thu: Chest + Back + Abs", "Arnold Variation #1 chest and back repeat", "Repeat the chest and back pattern with steady quality and controlled fatigue management. Split the final pairing apart if your hinge position degrades.", chestBackTwo, {
+    buildDay("day-4", "Thu: Chest + Back + Abs", "Blaq Mass Chest + Back", "Repeat the Blaq Mass chest and back pattern with steady quality and controlled fatigue management. Split the final pairing apart if your hinge position degrades.", chestBackTwo, {
       coreFinisher: chestBackTwoAbs,
       supersets: [
         createSupersetGroup("day-4-chest-superset", "Chest expansion superset", [chestBackTwo[2], chestBackTwo[3]], "60 sec after both exercises", "Use the standing fly if the cable lane is open; otherwise swap back to the standard chest fly and keep the pullover strict."),
@@ -799,7 +799,7 @@ function buildAdvancedBodybuildingDays(
         createSupersetGroup("day-4-back-superset-2", "Back hinge pairing", [chestBackTwo[6], chestBackTwo[7]], "90-120 sec after both exercises", "Only keep this as a true pairing when your bracing and recovery are solid. Otherwise perform them separately."),
       ],
     }),
-    buildDay("day-5", "Fri: Shoulders + Arms + Forearms + Abs", "Arnold Variation #1 shoulders and arms repeat", "Repeat the shoulder and arm volume with strict execution and controlled near-failure effort. Pull volume down before your joints get cranky.", shouldersArmsTwo, {
+    buildDay("day-5", "Fri: Shoulders + Arms + Forearms + Abs", "Blaq Mass Arms + Delts", "Repeat the Blaq Mass shoulder and arm volume with strict execution and controlled near-failure effort. Pull volume down before your joints get cranky.", shouldersArmsTwo, {
       coreFinisher: shouldersArmsTwoAbs,
       supersets: [
         createSupersetGroup("day-5-shoulder-superset-1", "Shoulder cap superset", [shouldersArmsTwo[2], shouldersArmsTwo[3]], "45-60 sec after both exercises", "Run the front raise and lateral raise together for dense delt volume."),
@@ -809,7 +809,7 @@ function buildAdvancedBodybuildingDays(
         createSupersetGroup("day-5-forearm-superset", "Forearm finish superset", [shouldersArmsTwo[11], shouldersArmsTwo[12]], "30-45 sec after both exercises", "Alternate palms-up and palms-down wrist work before resting."),
       ],
     }),
-    buildDay("day-6", "Sat: Legs + Lower Back + Abs", "Arnold Variation #1 legs and lower back repeat", "Finish the week with disciplined leg and lower-back work before a full Sunday rest. Keep the last third of the session strict instead of sloppy.", legsTwo, {
+    buildDay("day-6", "Sat: Legs + Lower Back + Abs", "Blaq Mass Legs + Foundation", "Finish the week with disciplined leg and lower-back work before a full Sunday rest. Keep the last third of the session strict instead of sloppy.", legsTwo, {
       coreFinisher: legsTwoAbs,
       supersets: [
         createSupersetGroup("day-6-leg-superset", "Quad and hamstring superset", [legsTwo[2], legsTwo[3]], "60 sec after both exercises", "Use the machine pairing for dense quad and hamstring work after the main lower-body lifts."),
@@ -876,6 +876,7 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput, completedWorkout
     weekIndex,
     completedWorkoutCount,
     advancedIntensityPhase: intensityPhase,
+    programLengthWeeks: useAdvancedBodybuildingSplit ? 16 : 8,
     title:
       useAdvancedBodybuildingSplit
         ? "Blaq Mass System v1"
