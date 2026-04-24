@@ -18,6 +18,15 @@ export default function ExerciseDetailScreen() {
   const params = useLocalSearchParams<{ slug: string; name?: string }>();
   const metadata = getExerciseMetadata(params.slug, params.name);
 
+  if (__DEV__) {
+    console.log("[exercise-detail] render", {
+      selectedSlug: params.slug,
+      metadataSlug: metadata.slug,
+      hasLocalImage: Boolean(metadata.localImage),
+      usingPlaceholder: !metadata.localImage,
+    });
+  }
+
   return (
     <Screen
       title={metadata.name}

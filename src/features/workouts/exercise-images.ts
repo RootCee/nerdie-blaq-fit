@@ -35,4 +35,25 @@ export const exerciseImages: Partial<Record<string, number>> = {
   "wrist-curl-up": require("../../../assets/exercises/wrist-curl-palms-up.png"),
   "assisted-pull-up-or-chin-up": require("../../../assets/exercises/close-grip-chin-up.png"),
   "calf-raise": require("../../../assets/exercises/standing-calf-raise-machine.png"),
+  "wide-grip-pull-up": require("../../../assets/exercises/wide-grip-pull-ups.png"),
+  "toes-to-bar": require("../../../assets/exercises/toes-to-bar.png"),
 };
+
+const exerciseImageSlugAliases: Partial<Record<string, string>> = {
+  "barbell-back-squat": "barbell-squat",
+  "wide-grip-pull-ups": "assisted-pull-up-or-chin-up",
+  "hanging-oblique-knee-raise": "hanging-oblique-raise",
+  "standing-calf-raise": "calf-raise",
+  "donkey-calf-raise": "calf-raise",
+};
+
+export function getExerciseImageForSlug(slug: string) {
+  const directMatch = exerciseImages[slug];
+
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const aliasSlug = exerciseImageSlugAliases[slug];
+  return aliasSlug ? exerciseImages[aliasSlug] : undefined;
+}

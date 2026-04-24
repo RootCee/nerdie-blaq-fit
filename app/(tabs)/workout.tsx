@@ -38,6 +38,10 @@ function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
   });
 }
 
+function shouldReplaceSavedPlan(savedPlan: WorkoutPlan, generatedPlan: WorkoutPlan) {
+  return savedPlan.version !== generatedPlan.version;
+}
+
 export default function WorkoutScreen() {
   const { profile, isComplete } = useOnboardingStore();
   const generatedPlan = useMemo(() => generateWorkoutPlan(profile), [profile]);
@@ -87,6 +91,47 @@ export default function WorkoutScreen() {
         const savedPlan = await loadActiveWorkoutPlan();
 
         if (savedPlan) {
+          const isStalePlan = shouldReplaceSavedPlan(savedPlan, generatedPlan);
+          const action = isStalePlan ? "replace" : "reuse";
+
+          if (__DEV__) {
+            console.log("[workout-screen] loaded saved plan", {
+              savedPlanTitle: savedPlan.title,
+              savedPlanVersion: savedPlan.version ?? "missing",
+              generatedPlanTitle: generatedPlan.title,
+              generatedPlanVersion: generatedPlan.version ?? "missing",
+              action,
+            });
+          }
+
+          if (isStalePlan) {
+            if (persistenceConfig.isConfigured) {
+              await replaceActiveWorkoutPlan(generatedPlan);
+            }
+
+            if (__DEV__) {
+              console.log("[workout-screen] saved plan replaced", {
+                replacedTitle: savedPlan.title,
+                replacedVersion: savedPlan.version ?? "missing",
+                nextTitle: generatedPlan.title,
+                nextVersion: generatedPlan.version ?? "missing",
+              });
+            }
+
+            if (isMounted) {
+              setPlan(generatedPlan);
+              setError(null);
+            }
+            return;
+          }
+
+          if (__DEV__) {
+            console.log("[workout-screen] saved plan reused", {
+              activeTitle: savedPlan.title,
+              activeVersion: savedPlan.version ?? "missing",
+            });
+          }
+
           if (isMounted) {
             setPlan(savedPlan);
             setError(null);
@@ -96,6 +141,13 @@ export default function WorkoutScreen() {
 
         if (persistenceConfig.isConfigured) {
           await saveWorkoutPlan(generatedPlan);
+        }
+
+        if (__DEV__) {
+          console.log("[workout-screen] generated plan saved", {
+            generatedPlanTitle: generatedPlan.title,
+            generatedPlanVersion: generatedPlan.version ?? "missing",
+          });
         }
 
         if (isMounted) {
@@ -130,6 +182,14 @@ export default function WorkoutScreen() {
   const handleRegeneratePlan = async () => {
     if (!generatedPlan) {
       return;
+    }
+
+    if (__DEV__) {
+      console.log("[workout-screen] regenerating plan", {
+        generatedPlanVersion: generatedPlan.version ?? "missing",
+        generatedPlanTitle: generatedPlan.title,
+        action: "force-replace",
+      });
     }
 
     setIsRegenerating(true);

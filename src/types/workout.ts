@@ -45,6 +45,7 @@ export interface WorkoutDay {
 }
 
 export interface WorkoutPlan {
+  version?: string;
   title: string;
   summary: string;
   trainingDays: number;

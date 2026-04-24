@@ -12,6 +12,8 @@ import {
   WorkoutSupersetGroup,
 } from "@/types/workout";
 
+const WORKOUT_PLAN_VERSION = "arnold-variation-1-v1";
+
 type ExerciseLibrary = {
   push: string[];
   pull: string[];
@@ -517,150 +519,129 @@ function buildSplitDays(
   return [upperOne, lowerOne, upperTwo, lowerTwo, conditioning].slice(0, trainingDays);
 }
 
-function buildAdvancedBodybuildingDays(library: ExerciseLibrary, goal: SupportedWorkoutGoal, experience: WorkoutExperience): WorkoutDay[] {
-  const prescription = getPrescription(goal, experience);
+function buildAdvancedBodybuildingDays(library: ExerciseLibrary): WorkoutDay[] {
+  const workSets = "3-4";
+  const repGoal = "10";
+  const rest = "60-90 sec";
+
+  const chestBackOneAbs = createRotatingAbsFinisher(0, {
+    ...library,
+    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
+    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
+  });
+  const shouldersArmsOneAbs = createRotatingAbsFinisher(1, {
+    ...library,
+    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
+    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
+  });
+  const legsOneAbs = createRotatingAbsFinisher(2, {
+    ...library,
+    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
+    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
+  });
+  const chestBackTwoAbs = createRotatingAbsFinisher(3, {
+    ...library,
+    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
+    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
+  });
+  const shouldersArmsTwoAbs = createRotatingAbsFinisher(4, {
+    ...library,
+    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
+    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
+  });
+  const legsTwoAbs = createRotatingAbsFinisher(5, {
+    ...library,
+    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
+    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
+  });
 
   const chestBackOne = [
-    exercise(pick(library.chest, 0), prescription.sets, prescription.reps, prescription.rest, "Use 2-3 ascending warm-up jumps, then pyramid your work sets."),
-    exercise(pick(library.back, 0), prescription.sets, prescription.reps, prescription.rest, "Drive elbows hard and take the last clean set close to failure."),
-    exercise(pick(library.chest, 1), prescription.sets, prescription.reps, prescription.rest, "Stay one rep shy of technical breakdown until the final set."),
-    exercise(pick(library.back, 1), prescription.sets, prescription.reps, prescription.rest, "Own the stretch and squeeze on every rep."),
-    exercise(pick(library.chest, 2), prescription.sets, prescription.reps, prescription.rest, "Use this accessory as a controlled burnout."),
-    exercise(pick(library.back, 2), prescription.sets, prescription.reps, prescription.rest, "Keep the torso still and finish with a hard contraction."),
+    exercise("Barbell bench press", workSets, repGoal, rest, "Pyramid your warm-ups, then hit crisp sets toward a 10-rep goal."),
+    exercise("Incline bench press", workSets, repGoal, rest, "Keep the bench moderate and chase clean upper-chest volume."),
+    exercise("Dumbbell pullover", workSets, repGoal, rest, "Stretch under control and keep the ribs stacked."),
+    exercise("Wide-grip pull-up", workSets, "10 or failure", rest, "Use bodyweight control first and let the final reps approach failure cleanly."),
+    exercise("Barbell bent-over row", workSets, repGoal, rest, "Drive elbows back and own the squeeze at the top."),
+    exercise("Barbell deadlift", workSets, repGoal, "90-120 sec", "Build with disciplined sets and keep the final work set heavy but technically sharp."),
   ];
-  const chestBackOneAbs = createRotatingAbsFinisher(0, library);
 
   const shouldersArmsOne = [
-    exercise(pick(library.shoulders, 0), prescription.sets, prescription.reps, prescription.rest, "Build across your sets and attack the top set with clean aggression."),
-    exercise(pick(library.shoulders, 1), prescription.sets, prescription.reps, prescription.rest, "Keep the torso quiet and let the delts do the work."),
-    exercise(pick(library.arms, 0), prescription.sets, prescription.reps, prescription.rest, "Squeeze the biceps hard and lower slowly."),
-    exercise(pick(library.arms, 2), prescription.sets, prescription.reps, prescription.rest, "Use a full elbow range and take the final set near failure."),
-    exercise(pick(library.arms, 1), prescription.sets, prescription.reps, prescription.rest, "Chase the stretch and keep the shoulders pinned back."),
-    exercise(pick(library.forearms, 0), "3", "15-20", "30 sec", "Control the tempo and hold the peak briefly."),
-    exercise(pick(library.forearms, 1), "3", "15-20", "30 sec", "Move only at the wrist and keep tension continuous."),
+    exercise("Clean and press", workSets, repGoal, rest, "Treat each rep as an athletic but controlled clean into a press."),
+    exercise("Lateral raise", workSets, repGoal, "45-60 sec", "Lead with the elbows and keep the torso quiet."),
+    exercise("Upright row", workSets, repGoal, rest, "Use a shoulder-friendly range and smooth pull."),
+    exercise("Dumbbell shoulder press", workSets, repGoal, rest, "Stay stacked through the trunk and press with control."),
+    exercise("Barbell curl", workSets, repGoal, "45-60 sec", "Lower slowly and avoid swinging."),
+    exercise("Incline dumbbell curl", workSets, repGoal, "45-60 sec", "Use the stretched position to keep biceps tension high."),
+    exercise("Close-grip bench press", workSets, repGoal, rest, "Keep elbows tucked and press with triceps intent."),
+    exercise("Skullcrusher", workSets, repGoal, "45-60 sec", "Lower smoothly and lock out hard without flaring."),
+    exercise("Wrist curl up", workSets, repGoal, "30-45 sec", "Move only at the wrist and hold the top briefly."),
+    exercise("Wrist curl down", workSets, repGoal, "30-45 sec", "Use lighter control and continuous tension."),
   ];
 
   const legsOne = [
-    exercise(pick(library.legs, 0), prescription.sets, prescription.reps, prescription.rest, "Ramp your load gradually, then drive the top set hard."),
-    exercise(pick(library.legs, 1), prescription.sets, prescription.reps, prescription.rest, "Reset the brace every rep and stop one rep before form slips."),
-    exercise(pick(library.legs, 4), prescription.sets, prescription.reps, prescription.rest, "Pause briefly at peak quad tension."),
-    exercise(pick(library.legs, 5), prescription.sets, prescription.reps, prescription.rest, "Own the eccentric and squeeze hard at the top."),
-    exercise(pick(library.legs, 6), "4", "12-20", "30-45 sec", "Use a full stretch and hard lockout each rep."),
+    exercise("Barbell squat", workSets, repGoal, rest, "Ramp into your work sets and keep every rep deep and stable."),
+    exercise("Reverse lunge", workSets, repGoal, "60-90 sec", "Train both legs evenly and keep the torso tall."),
+    exercise("Leg curl", workSets, repGoal, "45-60 sec", "Own the eccentric and squeeze at the top."),
+    exercise("Straight-leg deadlift", workSets, repGoal, rest, "Load the hamstrings without losing position."),
+    exercise("Good morning", workSets, repGoal, rest, "Use strict hinge mechanics and conservative loading."),
+    exercise("Standing calf raise", workSets, repGoal, "30-45 sec", "Pause high and use the full stretch at the bottom."),
   ];
-  const legsOneAbs = createRotatingAbsFinisher(2, library);
 
   const chestBackTwo = [
-    exercise(pick(library.chest, 3), prescription.sets, prescription.reps, prescription.rest, "Stretch under control, then squeeze hard through the chest."),
-    exercise(pick(library.back, 3), prescription.sets, prescription.reps, prescription.rest, "Keep constant tension and do not rush the bottom."),
-    exercise(pick(library.chest, 4), prescription.sets, prescription.reps, prescription.rest, "Lean slightly forward and finish the last set close to failure."),
-    exercise(pick(library.back, 4), prescription.sets, prescription.reps, prescription.rest, "Own the full line of pull and keep the chest tall."),
-    exercise(pick(library.chest, 5), prescription.sets, prescription.reps, prescription.rest, "Use this as a pump-focused finisher."),
-    exercise(pick(library.back, 5), prescription.sets, prescription.reps, prescription.rest, "Pause at peak contraction before lowering."),
+    exercise("Barbell bench press", workSets, repGoal, rest, "Repeat the main press and chase consistent 10-rep quality."),
+    exercise("Incline bench press", workSets, repGoal, rest, "Keep the incline work smooth and chest-focused."),
+    exercise("Dumbbell pullover", workSets, repGoal, rest, "Stay long through the lats and chest on every rep."),
+    exercise("Wide-grip pull-up", workSets, "10 or failure", rest, "Accumulate strong vertical pulling volume and push the last quality reps."),
+    exercise("Barbell bent-over row", workSets, repGoal, rest, "Pause briefly at the top before lowering."),
+    exercise("Straight-leg deadlift", workSets, repGoal, "90-120 sec", "Use this variation to bias the posterior chain while keeping form clean."),
   ];
-  const chestBackTwoAbs = createRotatingAbsFinisher(3, library);
 
   const shouldersArmsTwo = [
-    exercise(pick(library.shoulders, 2), prescription.sets, prescription.reps, prescription.rest, "Stay strict and avoid swinging through fatigue."),
-    exercise(pick(library.shoulders, 3), prescription.sets, prescription.reps, prescription.rest, "Lead with the elbows and hold the top briefly."),
-    exercise(pick(library.shoulders, 4), prescription.sets, prescription.reps, prescription.rest, "Pull smoothly and stop at a shoulder-friendly height."),
-    exercise(pick(library.shoulders, 5), prescription.sets, prescription.reps, prescription.rest, "Control the rear-delt squeeze all the way through."),
-    exercise(pick(library.arms, 3), prescription.sets, prescription.reps, prescription.rest, "Keep the elbows in and reach a full lockout."),
-    exercise(pick(library.arms, 4), prescription.sets, prescription.reps, prescription.rest, "Use your final set as a controlled push-to-failure burner."),
-    exercise(pick(library.forearms, 2), "3", "10-15", "45 sec", "Hold the squeeze and do not swing the bar."),
+    exercise("Clean and press", workSets, repGoal, rest, "Stay explosive out of the clean and stacked on the press."),
+    exercise("Lateral raise", workSets, repGoal, "45-60 sec", "Strict reps and no swinging through fatigue."),
+    exercise("Upright row", workSets, repGoal, rest, "Pull smoothly to a comfortable shoulder height."),
+    exercise("Dumbbell shoulder press", workSets, repGoal, rest, "Keep tension on the delts all the way through."),
+    exercise("Barbell curl", workSets, repGoal, "45-60 sec", "Use your last set to approach failure without breaking form."),
+    exercise("Incline dumbbell curl", workSets, repGoal, "45-60 sec", "Stretch and squeeze on every rep."),
+    exercise("Close-grip bench press", workSets, repGoal, rest, "Drive through the triceps and control the lowering phase."),
+    exercise("Overhead tricep extension", workSets, repGoal, "45-60 sec", "Keep elbows pointed forward and reach a full lockout."),
+    exercise("Wrist curl up", workSets, repGoal, "30-45 sec", "Stay smooth and keep tension in the forearm flexors."),
+    exercise("Wrist curl down", workSets, repGoal, "30-45 sec", "Use strict wrist motion and lighter load."),
   ];
 
   const legsTwo = [
-    exercise(pick(library.legs, 2), prescription.sets, prescription.reps, prescription.rest, "Feel the hamstrings load on every rep and keep the bar close."),
-    exercise(pick(library.legs, 3), prescription.sets, prescription.reps, prescription.rest, "Stay braced and use clean hinge mechanics."),
-    exercise(pick(library.legs, 7), prescription.sets, prescription.reps, prescription.rest, "Sit between the hips and stay tall through the chest."),
-    exercise(pick(library.legs, 8), prescription.sets, prescription.reps, prescription.rest, "Use full range and finish each side evenly."),
-    exercise(pick(library.legs, 6), "4", "15-20", "30-45 sec", "Chase a deep stretch and strong calf squeeze."),
+    exercise("Barbell squat", workSets, repGoal, rest, "Repeat the squat pattern and keep output high without losing depth."),
+    exercise("Reverse lunge", workSets, repGoal, "60-90 sec", "Stay balanced and clean through each side."),
+    exercise("Leg curl", workSets, repGoal, "45-60 sec", "Chase a hard hamstring squeeze with clean tempo."),
+    exercise("Straight-leg deadlift", workSets, repGoal, rest, "Keep the bar close and the hamstrings loaded."),
+    exercise("Good morning", workSets, repGoal, rest, "Treat this as strict lower-back and hinge practice under load."),
+    exercise("Standing calf raise", workSets, repGoal, "30-45 sec", "Full stretch, hard squeeze, no bouncing."),
   ];
-  const legsTwoAbs = createRotatingAbsFinisher(5, library);
 
   return [
-    buildDay(
-      "day-1",
-      "Mon: Chest + Back + Abs",
-      "Heavy chest and back foundation",
-      "Pyramid into your heaviest quality work sets, then use the accessories to chase a pump without losing form.",
-      chestBackOne,
-      {
-        supersets: [
-          createSupersetGroup("day-1-superset-1", "Chest/back pump superset", [chestBackOne[4], chestBackOne[5]], "60 sec after both exercises", "Alternate the final chest and back accessories before resting."),
-          createSupersetGroup("day-1-abs-superset", "Rotating abs superset", chestBackOneAbs.exercises, "30 sec after both exercises", "One front-ab move plus one oblique move."),
-        ],
-        coreFinisher: chestBackOneAbs,
-      },
-    ),
-    buildDay(
-      "day-2",
-      "Tue: Shoulders + Arms + Forearms",
-      "Delts, arm density, and grip work",
-      "Keep the compounds strong, then push the isolation work hard with short rest and one high-effort final set where noted.",
-      shouldersArmsOne,
-      {
-        supersets: [
-          createSupersetGroup("day-2-superset-1", "Biceps/triceps superset", [shouldersArmsOne[2], shouldersArmsOne[3]], "45-60 sec after both exercises", "Pair your first direct arm movements to keep tension high."),
-          createSupersetGroup("day-2-superset-2", "Forearm finisher superset", [shouldersArmsOne[5], shouldersArmsOne[6]], "30 sec after both exercises", "Finish with palm-up and palm-down wrist work."),
-        ],
-      },
-    ),
-    buildDay(
-      "day-3",
-      "Wed: Legs + Abs",
-      "Quad, posterior-chain, and lower-leg work",
-      "Build across the big lifts, keep the machine work smooth, and treat abs as strict trunk work instead of sloppy conditioning.",
-      legsOne,
-      {
-        supersets: [
-          createSupersetGroup("day-3-superset-1", "Leg accessory superset", [legsOne[2], legsOne[3]], "60 sec after both exercises", "Pair the quad and hamstring machine work before resting."),
-          createSupersetGroup("day-3-abs-superset", "Rotating abs superset", legsOneAbs.exercises, "30 sec after both exercises", "One front-ab move plus one oblique move."),
-        ],
-        coreFinisher: legsOneAbs,
-      },
-    ),
-    buildDay(
-      "day-4",
-      "Thu: Chest + Back + Abs",
-      "Stretch-mediated chest and back volume",
-      "Use a slightly more pump-driven feel today while still driving the final quality set hard.",
-      chestBackTwo,
-      {
-        supersets: [
-          createSupersetGroup("day-4-superset-1", "Chest/back volume superset", [chestBackTwo[2], chestBackTwo[3]], "60 sec after both exercises", "Alternate the mid-session pressing and pulling work."),
-          createSupersetGroup("day-4-abs-superset", "Rotating abs superset", chestBackTwoAbs.exercises, "30 sec after both exercises", "One front-ab move plus one oblique move."),
-        ],
-        coreFinisher: chestBackTwoAbs,
-      },
-    ),
-    buildDay(
-      "day-5",
-      "Fri: Shoulders + Arms + Forearms",
-      "Delt cap, arm pump, and forearm finish",
-      "Keep the shoulder isolation strict and let the arm work climb toward a controlled near-failure finish.",
-      shouldersArmsTwo,
-      {
-        supersets: [
-          createSupersetGroup("day-5-superset-1", "Shoulder density superset", [shouldersArmsTwo[1], shouldersArmsTwo[3]], "45-60 sec after both exercises", "Pair side and rear-delt work to keep the session moving."),
-          createSupersetGroup("day-5-superset-2", "Arm finisher superset", [shouldersArmsTwo[4], shouldersArmsTwo[5]], "45 sec after both exercises", "Finish with direct triceps and push-up burnout work."),
-        ],
-      },
-    ),
-    buildDay(
-      "day-6",
-      "Sat: Legs + Abs",
-      "Posterior-chain and unilateral lower-body focus",
-      "Keep the hinge work crisp, train both legs evenly, and finish with rotating abs before a full Sunday rest.",
-      legsTwo,
-      {
-        supersets: [
-          createSupersetGroup("day-6-superset-1", "Lower-body volume superset", [legsTwo[2], legsTwo[3]], "60 sec after both exercises", "Pair the squat and unilateral work to drive leg volume efficiently."),
-          createSupersetGroup("day-6-abs-superset", "Rotating abs superset", legsTwoAbs.exercises, "30 sec after both exercises", "One front-ab move plus one oblique move."),
-        ],
-        coreFinisher: legsTwoAbs,
-      },
-    ),
+    buildDay("day-1", "Mon: Chest + Back + Abs", "Arnold Variation #1 chest and back", "Advanced 60-75 minute muscle-build day. Pyramid your early sets, use clean reps, and let the final quality set on pulls approach failure when called for.", chestBackOne, {
+      supersets: [createSupersetGroup("day-1-abs-superset", "Advanced abs rotation", chestBackOneAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
+      coreFinisher: chestBackOneAbs,
+    }),
+    buildDay("day-2", "Tue: Shoulders + Arms + Forearms + Abs", "Arnold Variation #1 shoulders and arms", "High-volume advanced upper-body work. Keep isolation strict, respect the short rests, and stop only when form starts to break.", shouldersArmsOne, {
+      supersets: [createSupersetGroup("day-2-abs-superset", "Advanced abs rotation", shouldersArmsOneAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
+      coreFinisher: shouldersArmsOneAbs,
+    }),
+    buildDay("day-3", "Wed: Legs + Lower Back + Abs", "Arnold Variation #1 legs and lower back", "This is the lower-body and lower-back day. Keep the hinges disciplined and treat the whole session like high-volume advanced work.", legsOne, {
+      supersets: [createSupersetGroup("day-3-abs-superset", "Advanced abs rotation", legsOneAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
+      coreFinisher: legsOneAbs,
+    }),
+    buildDay("day-4", "Thu: Chest + Back + Abs", "Arnold Variation #1 chest and back repeat", "Repeat the chest and back pattern with steady quality and controlled fatigue management.", chestBackTwo, {
+      supersets: [createSupersetGroup("day-4-abs-superset", "Advanced abs rotation", chestBackTwoAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
+      coreFinisher: chestBackTwoAbs,
+    }),
+    buildDay("day-5", "Fri: Shoulders + Arms + Forearms + Abs", "Arnold Variation #1 shoulders and arms repeat", "Repeat the shoulder and arm volume with strict execution and controlled near-failure effort.", shouldersArmsTwo, {
+      supersets: [createSupersetGroup("day-5-abs-superset", "Advanced abs rotation", shouldersArmsTwoAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
+      coreFinisher: shouldersArmsTwoAbs,
+    }),
+    buildDay("day-6", "Sat: Legs + Lower Back + Abs", "Arnold Variation #1 legs and lower back repeat", "Finish the week with disciplined leg and lower-back work before a full Sunday rest.", legsTwo, {
+      supersets: [createSupersetGroup("day-6-abs-superset", "Advanced abs rotation", legsTwoAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
+      coreFinisher: legsTwoAbs,
+    }),
   ];
 }
 
@@ -679,7 +660,7 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
   const activityLevel = input.activityLevel!;
   const equipment = input.availableEquipment;
   const goalPace = input.goalPace ?? "steady";
-  const useAdvancedBodybuildingSplit = experience === "advanced" && location === "gym";
+  const useAdvancedBodybuildingSplit = goal === "muscle-gain" && experience === "advanced" && location === "gym";
   const defaultTrainingDays = resolveTrainingDays(
     goal,
     experience,
@@ -691,12 +672,29 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
   const trainingDays = useAdvancedBodybuildingSplit ? 6 : defaultTrainingDays;
   const library = buildExerciseLibrary(location, equipment);
   const days = useAdvancedBodybuildingSplit
-    ? buildAdvancedBodybuildingDays(library, goal, experience)
+    ? buildAdvancedBodybuildingDays(library)
     : trainingDays <= 3
       ? buildFullBodyDays(trainingDays, library, goal, experience)
       : buildSplitDays(trainingDays, library, goal, experience);
 
+  if (__DEV__) {
+    console.log("[workout-generator] plan selection", {
+      goal,
+      experience,
+      requestedLocation: input.workoutLocation,
+      resolvedLocation: location,
+      goalPace,
+      trainingDays,
+      branch: useAdvancedBodybuildingSplit
+        ? "advanced-bodybuilding"
+        : trainingDays <= 3
+          ? "full-body"
+          : "split",
+    });
+  }
+
   return {
+    version: WORKOUT_PLAN_VERSION,
     title:
       useAdvancedBodybuildingSplit
         ? "Advanced Bodybuilding Rotation"
@@ -707,7 +705,7 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
           : "Strong Foundations Week",
     summary:
       useAdvancedBodybuildingSplit
-        ? "A deterministic six-day bodybuilding split with repeated chest/back, shoulders/arms, rotating abs, and Sunday off."
+        ? "Arnold Schwarzenegger Workout Variation #1: an advanced six-day gym split for muscle gain with rotating abs and Sunday rest."
         : goal === "fat-loss"
         ? "A balanced weekly structure with strength work, short core finishers, and steady conditioning support."
         : goal === "muscle-gain"
@@ -725,10 +723,10 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
       "If an exercise bothers a joint, swap it for a similar movement pattern and pain-free range.",
       "Supersets pair two lighter movements back to back before resting.",
       useAdvancedBodybuildingSplit
-        ? "Abs rotate deterministically across front-core and oblique pools on each abs day."
+        ? "This is high-volume advanced training. Keep sessions around 60-75 minutes, recover hard, and scale loads before pushing failure."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
       useAdvancedBodybuildingSplit
-        ? "Pyramid the first work sets, then take the final quality set close to failure where the exercise note calls for it."
+        ? "Abs rotate deterministically from the front-core and oblique pools on every training day in this split."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
       input.goalWeight
         ? `Your current plan also tracks the direction toward ${input.goalWeight}${goalPace ? ` at a ${goalPace} pace` : ""}, using that as guidance instead of pressure.`

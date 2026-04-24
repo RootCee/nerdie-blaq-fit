@@ -1,10 +1,8 @@
 import { WorkoutLocation } from "@/types/onboarding";
-import { exerciseImages } from "@/features/workouts/exercise-images";
+import { getExerciseImageForSlug } from "@/features/workouts/exercise-images";
 import { ExerciseDetailMetadata, ExerciseMetadata, ExerciseSubstitution, ExerciseSubstitutionType } from "@/types/workout";
 
 const placeholderImage = require("../../../assets/exercises/placeholder.png");
-
-const localExerciseImages: Partial<Record<string, number>> = exerciseImages;
 
 type ExerciseOverrides = Partial<Omit<ExerciseMetadata, "slug" | "name" | "image" | "substitutions">> & {
   substitutions?: Array<{
@@ -33,7 +31,7 @@ function hydrateSubstitutions(substitutions: ExerciseSubstitution[]) {
 
 function createExerciseMetadata(name: string, overrides: ExerciseOverrides = {}): ExerciseMetadata {
   const slug = toExerciseSlug(name);
-  const localImage = overrides.localImage ?? localExerciseImages[slug];
+  const localImage = overrides.localImage ?? getExerciseImageForSlug(slug);
 
   return {
     slug,
@@ -167,6 +165,25 @@ const detailedEntries: ExerciseMetadata[] = [
       { type: "home-alternative", name: "Resistance band chest press", reason: "Works when dip bars are not available." },
     ],
   }),
+  createExerciseMetadata("Close-grip bench press", {
+    shortDescription: "A pressing variation that emphasizes triceps while still loading the chest and shoulders.",
+    stepByStepInstructions: [
+      "Set up as you would for a bench press with a narrower-than-usual grip.",
+      "Lower the bar to the lower chest while keeping elbows tucked.",
+      "Press up smoothly without letting the wrists fold back.",
+    ],
+    primaryMuscles: ["Triceps", "Chest"],
+    secondaryMuscles: ["Front shoulders"],
+    equipment: ["Barbell", "Bench"],
+    workoutLocation: ["gym"],
+    tips: ["Keep the forearms close to vertical.", "Use a grip width that feels strong on the wrists and elbows."],
+    commonMistakes: ["Going too narrow and stressing the wrists.", "Letting elbows flare like a regular bench press."],
+    substitutions: [
+      { type: "same-pattern-option", name: "Skullcrusher", reason: "Keeps strong direct triceps loading." },
+      { type: "gym-alternative", name: "Overhead tricep extension", reason: "Still trains triceps through a long range." },
+      { type: "easier-option", name: "Resistance band chest press", reason: "Simplifies the pressing setup while keeping triceps involved." },
+    ],
+  }),
   createExerciseMetadata("Resistance band chest press", {
     shortDescription: "A joint-friendly chest press with band resistance and simple setup.",
     stepByStepInstructions: [
@@ -241,6 +258,25 @@ const detailedEntries: ExerciseMetadata[] = [
       { type: "same-pattern-option", name: "Assisted pull-up or chin-up", reason: "Matches the vertical pull pattern closely." },
       { type: "gym-alternative", name: "Dumbbell pullover", reason: "Adds a lat-focused upper-body pull through a longer arc." },
       { type: "easier-option", name: "Resistance band row", reason: "Simplifies loading when machines are not available." },
+    ],
+  }),
+  createExerciseMetadata("Wide-grip pull-up", {
+    shortDescription: "A bodyweight vertical pull that emphasizes upper-back width and lat strength.",
+    stepByStepInstructions: [
+      "Take a grip wider than shoulder width and set the shoulders down first.",
+      "Pull the chest toward the bar by driving elbows down and out.",
+      "Lower under control to a full stretch without swinging.",
+    ],
+    primaryMuscles: ["Lats", "Upper back"],
+    secondaryMuscles: ["Biceps", "Forearms", "Core"],
+    equipment: ["Pull-up bar"],
+    workoutLocation: ["gym"],
+    tips: ["Stay long through the torso instead of craning the neck.", "Own the lowering phase to build clean reps."],
+    commonMistakes: ["Kipping through reps.", "Only reaching the chin over the bar without full-body control."],
+    substitutions: [
+      { type: "same-pattern-option", name: "Assisted pull-up or chin-up", reason: "Keeps a similar vertical pull with scalable assistance." },
+      { type: "gym-alternative", name: "Lat pulldown", reason: "Lets you train the same pattern with more controlled loading." },
+      { type: "easier-option", name: "Single-arm dumbbell row", reason: "Builds back strength when vertical pulling capacity is still developing." },
     ],
   }),
   createExerciseMetadata("Barbell bent-over row", {
@@ -870,6 +906,44 @@ const detailedEntries: ExerciseMetadata[] = [
       { type: "gym-alternative", name: "Cable woodchop", reason: "Adds loaded standing rotation." },
     ],
   }),
+  createExerciseMetadata("Hanging oblique knee raise", {
+    shortDescription: "A hanging oblique move that adds side-flexion and pelvic control.",
+    stepByStepInstructions: [
+      "Hang from the bar and lock the shoulders down before you move.",
+      "Raise the knees toward one side by curling the pelvis and rotating lightly.",
+      "Lower slowly and reset the swing before the next rep.",
+    ],
+    primaryMuscles: ["Obliques", "Rectus abdominis"],
+    secondaryMuscles: ["Grip", "Hip flexors"],
+    equipment: ["Pull-up bar"],
+    workoutLocation: ["gym"],
+    tips: ["Move from the trunk instead of flicking the knees.", "Own each side evenly."],
+    commonMistakes: ["Using momentum to swing through reps.", "Only turning the knees without curling the pelvis."],
+    substitutions: [
+      { type: "same-pattern-option", name: "Hanging oblique raise", reason: "Keeps the same hanging oblique pattern." },
+      { type: "gym-alternative", name: "Cable woodchop", reason: "Still challenges the obliques with load." },
+      { type: "easier-option", name: "Side plank hip dip", reason: "Uses a more stable setup for oblique work." },
+    ],
+  }),
+  createExerciseMetadata("Toes to bar", {
+    shortDescription: "A high-skill front-core movement that combines hanging control with strong ab tension.",
+    stepByStepInstructions: [
+      "Hang from the bar and set the shoulders before each rep.",
+      "Raise the feet toward the bar by curling the pelvis and bracing hard.",
+      "Lower under control without turning the movement into a swing.",
+    ],
+    primaryMuscles: ["Rectus abdominis", "Hip flexors"],
+    secondaryMuscles: ["Grip", "Lats", "Obliques"],
+    equipment: ["Pull-up bar"],
+    workoutLocation: ["gym"],
+    tips: ["Think ribs to pelvis before feet to bar.", "Reset if the swing takes over."],
+    commonMistakes: ["Kipping every rep.", "Only lifting the legs without curling the trunk."],
+    substitutions: [
+      { type: "same-pattern-option", name: "Hanging leg raise", reason: "Keeps the same hanging front-core pattern with a lower skill floor." },
+      { type: "gym-alternative", name: "Ab wheel rollout", reason: "Still delivers a high-tension front-core challenge." },
+      { type: "easier-option", name: "Cable crunch", reason: "Scales front-ab work with more stability." },
+    ],
+  }),
   createExerciseMetadata("Cardio intervals", {
     shortDescription: "Short work bouts alternated with recovery to build conditioning.",
     stepByStepInstructions: [
@@ -962,6 +1036,14 @@ export function getExerciseMetadata(slug: string, fallbackName?: string): Exerci
       entry.tips.length,
     );
 
+    if (__DEV__) {
+      console.log("[exercise-library] resolved exercise metadata", {
+        slug,
+        hasLocalImage: Boolean(entry.localImage),
+        usingPlaceholder: !entry.localImage,
+      });
+    }
+
     return {
       ...entry,
       isFallback: !hasDetailedContent,
@@ -971,6 +1053,15 @@ export function getExerciseMetadata(slug: string, fallbackName?: string): Exerci
   const fallback = createExerciseMetadata(fallbackName ?? humanizeSlug(slug), {
     shortDescription: "This movement is part of your current plan, but full coaching notes have not been added yet.",
   });
+
+  if (__DEV__) {
+    console.log("[exercise-library] fallback exercise metadata", {
+      slug,
+      fallbackName,
+      hasLocalImage: Boolean(fallback.localImage),
+      usingPlaceholder: !fallback.localImage,
+    });
+  }
 
   return {
     ...fallback,
