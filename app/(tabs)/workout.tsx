@@ -158,6 +158,7 @@ export default function WorkoutScreen() {
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [dayLogs, setDayLogs] = useState<Record<string, WorkoutDayLog>>({});
   const [selectedProgramDay, setSelectedProgramDay] = useState(0);
+  const [isDayDetailOpen, setIsDayDetailOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
@@ -400,202 +401,237 @@ export default function WorkoutScreen() {
   const estimatedCompletionLabel = formatShortDate(plan.estimatedCompletionDate);
   const planStartLabel = formatShortDate(plan.planStartDate);
   const selectedDayExercises = selectedDay ? getGroupedExercises(selectedDay) : [];
+  const selectedDayStatus = selectedSlot?.isRestDay
+    ? "Rest Day"
+    : selectedSlot?.completed
+      ? "Done"
+      : isLoadingLogs
+        ? "Checking..."
+        : "Not Done";
 
   return (
     <>
       <Screen title="Session" subtitle="Your current training week, built from your saved profile and setup.">
-      <SectionCard title={plan.title} eyebrow="Current Plan">
-        <Text style={styles.copy}>{plan.summary}</Text>
-        <View style={styles.statsRow}>
-          <StatChip label="Days" value={String(plan.trainingDays)} />
-          <StatChip label="Goal" value={plan.goal.replace("-", " ")} />
-          <StatChip label="Location" value={plan.location} />
-          <StatChip label="Level" value={plan.experience} />
-        </View>
-        <View style={styles.programMetaRow}>
-          <Text style={styles.programMetaText}>{currentWeekLabel}</Text>
-          <Text style={styles.programMetaText}>
-            Program day {plan.currentProgramDay ?? 1} of 7
-          </Text>
-          {planStartLabel ? <Text style={styles.programMetaText}>Started {planStartLabel}</Text> : null}
-          {estimatedCompletionLabel ? <Text style={styles.programMetaText}>Estimated finish {estimatedCompletionLabel}</Text> : null}
-        </View>
-        <PrimaryButton
-          label={isRegenerating ? "Refreshing plan..." : "Refresh plan"}
-          onPress={() => void handleRegeneratePlan()}
-          variant="ghost"
-        />
-        <PrimaryButton
-          label="View Full Program Calendar"
-          onPress={() => setIsCalendarOpen(true)}
-          variant="ghost"
-        />
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      </SectionCard>
-
-      <SectionCard title={currentWeekLabel} eyebrow="Weekly tracker">
-        <View style={styles.weekTrackerRow}>
-          {weekSlots.map((slot) => {
-            const isSelected = selectedSlot?.index === slot.index;
-            const isToday = todayProgramIndex === slot.index;
-            const cardStyles = [
-              styles.weekDayCard,
-              slot.isRestDay ? styles.restDayCard : null,
-              slot.completed ? styles.completedDayCard : null,
-              isToday ? styles.todayDayCard : null,
-              isSelected ? styles.selectedDayCard : null,
-            ];
-
-            return (
-              <Pressable
-                key={`${slot.label}-${slot.index}`}
-                onPress={() => setSelectedProgramDay(slot.index)}
-                style={cardStyles}
-              >
-                <Text style={styles.weekDayLabel}>{slot.label}</Text>
-                <Text style={styles.weekDayDate}>{slot.date.getDate()}</Text>
-                <Text style={styles.weekDayTitle} numberOfLines={2}>
-                  {slot.workoutDay ? trimProgramDayTitle(slot.workoutDay.title) : "Rest / Recovery Day"}
-                </Text>
-                <Text style={styles.weekDayStatus}>
-                  {slot.isRestDay ? "Rest" : slot.completed ? "Complete" : isLoadingLogs ? "Checking" : "Ready"}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Plan notes" eyebrow="How to use this week">
-        {plan.notes.map((note) => (
-          <Text key={note} style={styles.noteItem}>
-            • {note}
-          </Text>
-        ))}
-      </SectionCard>
-
-      {selectedDay ? (
-        <SectionCard key={selectedDay.id} title={selectedDay.title} eyebrow={selectedDay.focus}>
-          <View style={styles.dayHeaderRow}>
-            <View style={[styles.statusBadge, selectedSlot.completed ? styles.completedBadge : styles.pendingBadge]}>
-              <Text style={styles.statusText}>
-                {selectedSlot.completed ? "Complete" : isLoadingLogs ? "Checking..." : "Ready"}
-              </Text>
-            </View>
-            <PrimaryButton
-              label={selectedSlot.completed ? "Update session" : "Start session"}
-              onPress={() =>
-                router.push({
-                  pathname: "/workout-session/[dayId]" as never,
-                  params: {
-                    dayId: selectedDay.id,
-                  } as never,
-                } as never)
-              }
-              variant="ghost"
-              style={styles.dayAction}
-            />
+        <SectionCard title={plan.title} eyebrow="Current Plan">
+          <Text style={styles.copy}>{plan.summary}</Text>
+          <View style={styles.statsRow}>
+            <StatChip label="Days" value={String(plan.trainingDays)} />
+            <StatChip label="Goal" value={plan.goal.replace("-", " ")} />
+            <StatChip label="Location" value={plan.location} />
+            <StatChip label="Level" value={plan.experience} />
           </View>
-          <Text style={styles.dayNotes}>{selectedDay.notes}</Text>
-          {dayLogs[selectedDay.id]?.completedAt ? (
-            <Text style={styles.completedAtText}>
-              Logged on {new Date(dayLogs[selectedDay.id].completedAt as string).toLocaleDateString()}
+          <View style={styles.programMetaRow}>
+            <Text style={styles.programMetaText}>{currentWeekLabel}</Text>
+            <Text style={styles.programMetaText}>
+              Program day {plan.currentProgramDay ?? 1} of 7
             </Text>
-          ) : null}
-
-          {selectedDayExercises.map(({ exercise: item, superset, positionInSuperset }) => (
-            <View
-              key={`${selectedDay.id}-${item.name}`}
-              style={[
-                styles.exerciseCard,
-                superset ? styles.supersetExerciseCard : null,
-              ]}
-            >
-              {superset ? (
-                <View style={styles.supersetHeader}>
-                  <Text style={styles.supersetLabel}>
-                    {superset.title} • Move {positionInSuperset} of {superset.exerciseSlugs.length}
-                  </Text>
-                  <Text style={styles.supersetNotes}>{superset.notes}</Text>
-                  <Text style={styles.supersetRest}>Recovery: {superset.restAfterGroup}</Text>
-                </View>
-              ) : null}
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/exercise/[slug]" as never,
-                    params: {
-                      slug: item.slug ?? toExerciseSlug(item.name),
-                      name: item.name,
-                    } as never,
-                  } as never)
-                }
-              >
-                <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
-                <Text style={styles.exerciseLink}>View movement notes</Text>
-              </Pressable>
-              <View style={styles.metaRow}>
-                <Text style={styles.metaText}>Sets: {item.sets}</Text>
-                <Text style={styles.metaText}>Reps: {item.reps}</Text>
-                <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
-              </View>
-              <Text style={styles.exerciseNotes}>{item.notes}</Text>
-            </View>
-          ))}
-
-          {selectedDay.coreFinisher ? (
-            <View style={styles.coreFinisherCard}>
-              <Text style={styles.coreFinisherTitle}>{selectedDay.coreFinisher.title === "Advanced ab block" ? "Blaq Core System" : selectedDay.coreFinisher.title}</Text>
-              <Text style={styles.coreFinisherEyebrow}>
-                {selectedDay.coreFinisher.emphasis === "front-core-trunk-stability"
-                  ? "Front core / trunk stability"
-                  : "Obliques / side core"}
-              </Text>
-              <Text style={styles.exerciseNotes}>{selectedDay.coreFinisher.notes}</Text>
-              {selectedDay.coreFinisher.exercises.map((item) => (
-                <View key={`${selectedDay.id}-core-${item.name}`} style={styles.coreFinisherExercise}>
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: "/exercise/[slug]" as never,
-                        params: {
-                          slug: item.slug ?? toExerciseSlug(item.name),
-                          name: item.name,
-                        } as never,
-                      } as never)
-                    }
-                  >
-                    <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
-                    <Text style={styles.exerciseLink}>View movement notes</Text>
-                  </Pressable>
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>Sets: {item.sets}</Text>
-                    <Text style={styles.metaText}>Reps: {item.reps}</Text>
-                    <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
-                  </View>
-                  <Text style={styles.exerciseNotes}>{item.notes}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
+            {planStartLabel ? <Text style={styles.programMetaText}>Started {planStartLabel}</Text> : null}
+            {estimatedCompletionLabel ? <Text style={styles.programMetaText}>Estimated finish {estimatedCompletionLabel}</Text> : null}
+          </View>
+          <PrimaryButton
+            label={isRegenerating ? "Refreshing plan..." : "Refresh plan"}
+            onPress={() => void handleRegeneratePlan()}
+            variant="ghost"
+          />
+          <PrimaryButton
+            label="View Full Program Calendar"
+            onPress={() => setIsCalendarOpen(true)}
+            variant="ghost"
+          />
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </SectionCard>
-      ) : (
-        <SectionCard title="Rest / Recovery Day" eyebrow="Selected day">
+
+        <SectionCard title={currentWeekLabel} eyebrow="Weekly tracker">
+          <View style={styles.weekTrackerRow}>
+            {weekSlots.map((slot) => {
+              const isSelected = selectedSlot?.index === slot.index;
+              const isToday = todayProgramIndex === slot.index;
+              const cardStyles = [
+                styles.weekDayCard,
+                slot.isRestDay ? styles.restDayCard : null,
+                slot.completed ? styles.completedDayCard : null,
+                isToday ? styles.todayDayCard : null,
+                isSelected ? styles.selectedDayCard : null,
+              ];
+
+              return (
+                <Pressable
+                  key={`${slot.label}-${slot.index}`}
+                  onPress={() => {
+                    setSelectedProgramDay(slot.index);
+                    setIsDayDetailOpen(true);
+                  }}
+                  style={cardStyles}
+                >
+                  <Text style={styles.weekDayLabel}>{slot.label}</Text>
+                  <Text style={styles.weekDayDate}>{slot.date.getDate()}</Text>
+                  <Text style={styles.weekDayTitle} numberOfLines={2}>
+                    {slot.workoutDay ? trimProgramDayTitle(slot.workoutDay.title) : "Rest / Recovery Day"}
+                  </Text>
+                  <Text style={styles.weekDayStatus}>
+                    {slot.isRestDay ? "Rest Day" : slot.completed ? "Done" : isToday ? "Today" : "Not Done"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SectionCard>
+
+        <SectionCard title="Plan notes" eyebrow="How to use this week">
+          {plan.notes.map((note) => (
+            <Text key={note} style={styles.noteItem}>
+              • {note}
+            </Text>
+          ))}
+        </SectionCard>
+
+        <SectionCard title="Built from your profile" eyebrow="Your source data">
           <Text style={styles.copy}>
-            This slot is your recovery day. Use it for mobility, walking, easy stretching, or full rest so the rest of the week stays productive.
+            Goal: {profile.fitnessGoal?.replace("-", " ")} | Experience: {profile.workoutExperience} | Location:{" "}
+            {profile.workoutLocation}
+          </Text>
+          <Text style={styles.copy}>
+            Equipment: {profile.availableEquipment.length ? profile.availableEquipment.join(", ") : "none"}
           </Text>
         </SectionCard>
-      )}
-      <SectionCard title="Built from your profile" eyebrow="Your source data">
-        <Text style={styles.copy}>
-          Goal: {profile.fitnessGoal?.replace("-", " ")} | Experience: {profile.workoutExperience} | Location:{" "}
-          {profile.workoutLocation}
-        </Text>
-        <Text style={styles.copy}>
-          Equipment: {profile.availableEquipment.length ? profile.availableEquipment.join(", ") : "none"}
-        </Text>
-      </SectionCard>
       </Screen>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isDayDetailOpen}
+        onRequestClose={() => setIsDayDetailOpen(false)}
+      >
+        <View style={styles.calendarModalBackdrop}>
+          <View style={styles.calendarModalCard}>
+            <View style={styles.calendarModalHeader}>
+              <View style={styles.calendarModalCopy}>
+                <Text style={styles.calendarModalTitle}>
+                  {selectedSlot ? `${selectedSlot.label} • ${formatShortDate(selectedSlot.date.toISOString())}` : "Session Day"}
+                </Text>
+                <Text style={styles.calendarModalSubtitle}>
+                  {selectedDay ? trimProgramDayTitle(selectedDay.title) : "Rest / Recovery Day"}
+                </Text>
+                <Text style={styles.calendarModalStatus}>
+                  {selectedDayStatus}
+                  {selectedDay && dayLogs[selectedDay.id]?.completedAt
+                    ? ` • Logged ${new Date(dayLogs[selectedDay.id].completedAt as string).toLocaleDateString()}`
+                    : ""}
+                </Text>
+              </View>
+              <Pressable onPress={() => setIsDayDetailOpen(false)} style={styles.calendarCloseButton}>
+                <Text style={styles.calendarCloseText}>X</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.calendarScrollContent}>
+              {selectedDay ? (
+                <>
+                  <SectionCard title={selectedDay.title} eyebrow={selectedDay.focus}>
+                    <Text style={styles.dayNotes}>{selectedDay.notes}</Text>
+                    {selectedDayExercises.map(({ exercise: item, superset, positionInSuperset }) => (
+                      <View
+                        key={`${selectedDay.id}-${item.name}`}
+                        style={[
+                          styles.exerciseCard,
+                          superset ? styles.supersetExerciseCard : null,
+                        ]}
+                      >
+                        {superset ? (
+                          <View style={styles.supersetHeader}>
+                            <Text style={styles.supersetLabel}>
+                              {superset.title} • Move {positionInSuperset} of {superset.exerciseSlugs.length}
+                            </Text>
+                            <Text style={styles.supersetNotes}>{superset.notes}</Text>
+                            <Text style={styles.supersetRest}>Recovery: {superset.restAfterGroup}</Text>
+                          </View>
+                        ) : null}
+                        <Pressable
+                          onPress={() =>
+                            router.push({
+                              pathname: "/exercise/[slug]" as never,
+                              params: {
+                                slug: item.slug ?? toExerciseSlug(item.name),
+                                name: item.name,
+                              } as never,
+                            } as never)
+                          }
+                        >
+                          <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
+                          <Text style={styles.exerciseLink}>View movement notes</Text>
+                        </Pressable>
+                        <View style={styles.metaRow}>
+                          <Text style={styles.metaText}>Sets: {item.sets}</Text>
+                          <Text style={styles.metaText}>Reps: {item.reps}</Text>
+                          <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
+                        </View>
+                        <Text style={styles.exerciseNotes}>{item.notes}</Text>
+                      </View>
+                    ))}
+
+                    {selectedDay.coreFinisher ? (
+                      <View style={styles.coreFinisherCard}>
+                        <Text style={styles.coreFinisherTitle}>
+                          {selectedDay.coreFinisher.title === "Advanced ab block" ? "Blaq Core System" : selectedDay.coreFinisher.title}
+                        </Text>
+                        <Text style={styles.coreFinisherEyebrow}>
+                          {selectedDay.coreFinisher.emphasis === "front-core-trunk-stability"
+                            ? "Front core / trunk stability"
+                            : "Obliques / side core"}
+                        </Text>
+                        <Text style={styles.exerciseNotes}>{selectedDay.coreFinisher.notes}</Text>
+                        {selectedDay.coreFinisher.exercises.map((item) => (
+                          <View key={`${selectedDay.id}-core-${item.name}`} style={styles.coreFinisherExercise}>
+                            <Pressable
+                              onPress={() =>
+                                router.push({
+                                  pathname: "/exercise/[slug]" as never,
+                                  params: {
+                                    slug: item.slug ?? toExerciseSlug(item.name),
+                                    name: item.name,
+                                  } as never,
+                                } as never)
+                              }
+                            >
+                              <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
+                              <Text style={styles.exerciseLink}>View movement notes</Text>
+                            </Pressable>
+                            <View style={styles.metaRow}>
+                              <Text style={styles.metaText}>Sets: {item.sets}</Text>
+                              <Text style={styles.metaText}>Reps: {item.reps}</Text>
+                              <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
+                            </View>
+                            <Text style={styles.exerciseNotes}>{item.notes}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </SectionCard>
+
+                  <PrimaryButton
+                    label={selectedSlot?.completed ? "Update Session" : "Start Session"}
+                    onPress={() => {
+                      setIsDayDetailOpen(false);
+                      router.push({
+                        pathname: "/workout-session/[dayId]" as never,
+                        params: {
+                          dayId: selectedDay.id,
+                        } as never,
+                      } as never);
+                    }}
+                  />
+                </>
+              ) : (
+                <SectionCard title="Rest / Recovery Day" eyebrow="Selected day">
+                  <Text style={styles.copy}>
+                    This slot is your recovery day. Use it for mobility, walking, easy stretching, or full rest so the rest of the week stays productive.
+                  </Text>
+                </SectionCard>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         animationType="slide"
@@ -897,6 +933,12 @@ const styles = StyleSheet.create({
   calendarModalSubtitle: {
     color: colors.textMuted,
     fontSize: 13,
+    lineHeight: 18,
+  },
+  calendarModalStatus: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "600",
     lineHeight: 18,
   },
   calendarCloseButton: {
