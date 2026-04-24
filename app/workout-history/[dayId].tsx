@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { getExerciseDisplayName } from "@/features/workouts/exercise-library";
 import { deriveWorkoutVolumeSummary, loadWorkoutDayLog } from "@/features/workouts/workout-log-persistence";
 import { loadActiveWorkoutPlan } from "@/features/workouts/workout-plan-persistence";
 import { colors, spacing } from "@/theme";
@@ -193,7 +194,7 @@ export default function WorkoutHistoryDetailScreen() {
             <Text style={styles.supersetRest}>Rest after group: {options.superset.restAfterGroup}</Text>
           </View>
         ) : null}
-        <Text style={styles.exerciseName}>{entry.exerciseName}</Text>
+        <Text style={styles.exerciseName}>{exercise.displayName ?? getExerciseDisplayName(entry.exerciseName) ?? entry.exerciseName}</Text>
         <Text style={styles.metaLine}>{entry.sets.filter((set) => set.isCompleted).length} completed sets</Text>
         {comparison ? (
           <View style={styles.comparisonBlock}>

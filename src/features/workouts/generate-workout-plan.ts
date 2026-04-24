@@ -1,5 +1,5 @@
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
-import { toExerciseSlug } from "@/features/workouts/exercise-library";
+import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
 import { parseWeightInPounds } from "@/lib/body-metrics";
 import {
   CoreFinisherBlock,
@@ -12,7 +12,10 @@ import {
   WorkoutSupersetGroup,
 } from "@/types/workout";
 
-const WORKOUT_PLAN_VERSION = "arnold-variation-1-v1";
+const WORKOUT_PLAN_VERSION = "arnold-variation-1-v3";
+const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+const ADVANCED_VARIATION_ANCHOR_UTC = Date.UTC(2026, 0, 5);
+const ADVANCED_WEEKLY_WORKOUT_TARGET = 6;
 
 type ExerciseLibrary = {
   push: string[];
@@ -257,11 +260,30 @@ function getPrescription(goal: SupportedWorkoutGoal, experience: WorkoutExperien
 }
 
 function exercise(name: string, sets: string, reps: string, restTime: string, notes: string): WorkoutExercise {
-  return { slug: toExerciseSlug(name), name, sets, reps, restTime, notes };
+  return {
+    slug: toExerciseSlug(name),
+    name,
+    displayName: getExerciseDisplayName(name),
+    sets,
+    reps,
+    restTime,
+    notes,
+  };
 }
 
 function pick(list: string[], index: number): string {
   return list[index % list.length];
+}
+
+function resolveWeekIndex(referenceDate = new Date()) {
+  const currentUtc = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate());
+  const diffMs = Math.max(0, currentUtc - ADVANCED_VARIATION_ANCHOR_UTC);
+
+  return Math.floor(diffMs / MS_PER_WEEK);
+}
+
+function resolveBiweeklyVariation<T>(options: T[], weekIndex: number) {
+  return options[Math.floor(weekIndex / 2) % options.length];
 }
 
 function createCoreFinisher(
@@ -305,6 +327,51 @@ function createRotatingAbsFinisher(index: number, library: ExerciseLibrary): Cor
     exercises: [
       exercise(frontAbs, "3-4", "10-15", "20 sec", "Pyramid into your top set, then finish the last clean set close to failure."),
       exercise(oblique, "3-4", "12-16 each side", "30 sec", "Stay controlled through the rotation or side bend and stop only when form starts to slip."),
+    ],
+  };
+}
+
+function createAdvancedAbsBlock(index: number): CoreFinisherBlock {
+  const lowerAbsPool = [
+    "Hanging knee raise",
+    "Hanging leg raise",
+    "Laying leg raise",
+    "Toes to bar",
+  ];
+  const upperAbsPool = [
+    "Decline sit-up",
+    "Decline crunch",
+    "Crunch",
+    "Medicine ball sit-up",
+    "Cable crunch",
+  ];
+  const obliquesPool = [
+    "Russian twist",
+    "Cable woodchop",
+    "Hanging oblique knee raise",
+    "Side plank hip dip",
+  ];
+  const coreStabilityPool = [
+    "Plank",
+    "Hollow hold",
+    "Dead bug",
+    "Bird dog",
+  ];
+
+  const lowerAbs = pick(lowerAbsPool, index);
+  const upperAbs = pick(upperAbsPool, index);
+  const obliques = pick(obliquesPool, index);
+  const stability = pick(coreStabilityPool, index);
+
+  return {
+    title: "Blaq Core System",
+    emphasis: "front-core-trunk-stability",
+    notes: "Nerdie Blaq Fit finishes advanced sessions with dense standalone ab work: one lower-ab move, one upper-ab move, one oblique pattern, and one bracing hold. No supersets here. Level 1: 3 rounds. Level 2: 4 rounds. Level 3: 5 rounds.",
+    exercises: [
+      exercise(lowerAbs, "3-5 rounds", "15-25 reps", "20-30 sec", "Lower abs first. Keep the pelvis controlled and the reps clean."),
+      exercise(upperAbs, "3-5 rounds", "15-25 reps", "20-30 sec", "Move through a full but controlled trunk-flexion range."),
+      exercise(obliques, "3-5 rounds", "20 total reps or 10 each side", "20-30 sec", "Stay smooth side to side and own the oblique contraction."),
+      exercise(stability, "3-5 rounds", "45-60 sec", "30-45 sec", "Brace hard and build time under tension without losing shape."),
     ],
   };
 }
@@ -519,52 +586,91 @@ function buildSplitDays(
   return [upperOne, lowerOne, upperTwo, lowerTwo, conditioning].slice(0, trainingDays);
 }
 
-function buildAdvancedBodybuildingDays(library: ExerciseLibrary): WorkoutDay[] {
+type AdvancedIntensityPhase = "base" | "burnout" | "tempo";
+
+function resolveAdvancedIntensityPhase(completedWorkoutCount: number): AdvancedIntensityPhase {
+  const completedWeeks = Math.floor(completedWorkoutCount / ADVANCED_WEEKLY_WORKOUT_TARGET);
+
+  if (completedWeeks >= 4) {
+    return "tempo";
+  }
+
+  if (completedWeeks >= 2) {
+    return "burnout";
+  }
+
+  return "base";
+}
+
+function applyAdvancedIntensityTechniques(exercises: WorkoutExercise[], phase: AdvancedIntensityPhase): WorkoutExercise[] {
+  if (phase === "base" || !exercises.length) {
+    return exercises;
+  }
+
+  return exercises.map((exerciseEntry, index) => {
+    if (index !== exercises.length - 1) {
+      return phase === "tempo"
+        ? {
+            ...exerciseEntry,
+            tempoCue: "3-second eccentric on every rep.",
+          }
+        : exerciseEntry;
+    }
+
+    const withBurnout = {
+      ...exerciseEntry,
+      sets: `${exerciseEntry.sets} + 1 burnout`,
+      notes: `${exerciseEntry.notes} Finish with one burnout set after your final full set.`,
+      burnoutSetNote: "Add 1 burnout set after the final full set.",
+    };
+
+    if (phase === "tempo") {
+      return {
+        ...withBurnout,
+        notes: `${withBurnout.notes} Use a 3-second eccentric on every rep.`,
+        tempoCue: "3-second eccentric on every rep.",
+      };
+    }
+
+    return withBurnout;
+  });
+}
+
+function buildAdvancedBodybuildingDays(
+  library: ExerciseLibrary,
+  weekIndex: number,
+  completedWorkoutCount: number,
+): WorkoutDay[] {
   const workSets = "3-4";
   const repGoal = "10";
   const rest = "60-90 sec";
+  const intensityPhase = resolveAdvancedIntensityPhase(completedWorkoutCount);
+  const chestPressVariation = resolveBiweeklyVariation(
+    ["Incline bench press", "Decline bench press", "Barbell bench press"],
+    weekIndex,
+  );
+  const squatVariation = resolveBiweeklyVariation(
+    ["Barbell squat", "Front squat", "Goblet squat"],
+    weekIndex,
+  );
 
-  const chestBackOneAbs = createRotatingAbsFinisher(0, {
-    ...library,
-    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
-    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
-  });
-  const shouldersArmsOneAbs = createRotatingAbsFinisher(1, {
-    ...library,
-    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
-    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
-  });
-  const legsOneAbs = createRotatingAbsFinisher(2, {
-    ...library,
-    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
-    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
-  });
-  const chestBackTwoAbs = createRotatingAbsFinisher(3, {
-    ...library,
-    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
-    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
-  });
-  const shouldersArmsTwoAbs = createRotatingAbsFinisher(4, {
-    ...library,
-    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
-    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
-  });
-  const legsTwoAbs = createRotatingAbsFinisher(5, {
-    ...library,
-    frontAbs: ["Decline crunch", "Cable crunch", "Hanging leg raise", "Toes to bar", "Ab wheel rollout", "Dragon flag", "Hollow hold"],
-    obliques: ["Hanging oblique knee raise", "Russian twist", "Landmine twist", "Cable woodchop", "Side plank hip dip"],
-  });
+  const chestBackOneAbs = createAdvancedAbsBlock(0);
+  const shouldersArmsOneAbs = createAdvancedAbsBlock(1);
+  const legsOneAbs = createAdvancedAbsBlock(2);
+  const chestBackTwoAbs = createAdvancedAbsBlock(3);
+  const shouldersArmsTwoAbs = createAdvancedAbsBlock(4);
+  const legsTwoAbs = createAdvancedAbsBlock(5);
 
-  const chestBackOne = [
+  const chestBackOne = applyAdvancedIntensityTechniques([
     exercise("Barbell bench press", workSets, repGoal, rest, "Pyramid your warm-ups, then hit crisp sets toward a 10-rep goal."),
-    exercise("Incline bench press", workSets, repGoal, rest, "Keep the bench moderate and chase clean upper-chest volume."),
+    exercise(chestPressVariation, workSets, repGoal, rest, "Stay strict with the current press variation and own all 10-rep sets."),
     exercise("Dumbbell pullover", workSets, repGoal, rest, "Stretch under control and keep the ribs stacked."),
     exercise("Wide-grip pull-up", workSets, "10 or failure", rest, "Use bodyweight control first and let the final reps approach failure cleanly."),
     exercise("Barbell bent-over row", workSets, repGoal, rest, "Drive elbows back and own the squeeze at the top."),
     exercise("Barbell deadlift", workSets, repGoal, "90-120 sec", "Build with disciplined sets and keep the final work set heavy but technically sharp."),
-  ];
+  ], intensityPhase);
 
-  const shouldersArmsOne = [
+  const shouldersArmsOne = applyAdvancedIntensityTechniques([
     exercise("Clean and press", workSets, repGoal, rest, "Treat each rep as an athletic but controlled clean into a press."),
     exercise("Lateral raise", workSets, repGoal, "45-60 sec", "Lead with the elbows and keep the torso quiet."),
     exercise("Upright row", workSets, repGoal, rest, "Use a shoulder-friendly range and smooth pull."),
@@ -575,27 +681,27 @@ function buildAdvancedBodybuildingDays(library: ExerciseLibrary): WorkoutDay[] {
     exercise("Skullcrusher", workSets, repGoal, "45-60 sec", "Lower smoothly and lock out hard without flaring."),
     exercise("Wrist curl up", workSets, repGoal, "30-45 sec", "Move only at the wrist and hold the top briefly."),
     exercise("Wrist curl down", workSets, repGoal, "30-45 sec", "Use lighter control and continuous tension."),
-  ];
+  ], intensityPhase);
 
-  const legsOne = [
-    exercise("Barbell squat", workSets, repGoal, rest, "Ramp into your work sets and keep every rep deep and stable."),
+  const legsOne = applyAdvancedIntensityTechniques([
+    exercise(squatVariation, workSets, repGoal, rest, "Ramp into your work sets and keep every rep deep and stable."),
     exercise("Reverse lunge", workSets, repGoal, "60-90 sec", "Train both legs evenly and keep the torso tall."),
     exercise("Leg curl", workSets, repGoal, "45-60 sec", "Own the eccentric and squeeze at the top."),
     exercise("Straight-leg deadlift", workSets, repGoal, rest, "Load the hamstrings without losing position."),
     exercise("Good morning", workSets, repGoal, rest, "Use strict hinge mechanics and conservative loading."),
     exercise("Standing calf raise", workSets, repGoal, "30-45 sec", "Pause high and use the full stretch at the bottom."),
-  ];
+  ], intensityPhase);
 
-  const chestBackTwo = [
+  const chestBackTwo = applyAdvancedIntensityTechniques([
     exercise("Barbell bench press", workSets, repGoal, rest, "Repeat the main press and chase consistent 10-rep quality."),
-    exercise("Incline bench press", workSets, repGoal, rest, "Keep the incline work smooth and chest-focused."),
+    exercise(chestPressVariation, workSets, repGoal, rest, "Repeat the current press variation and stay crisp under fatigue."),
     exercise("Dumbbell pullover", workSets, repGoal, rest, "Stay long through the lats and chest on every rep."),
     exercise("Wide-grip pull-up", workSets, "10 or failure", rest, "Accumulate strong vertical pulling volume and push the last quality reps."),
     exercise("Barbell bent-over row", workSets, repGoal, rest, "Pause briefly at the top before lowering."),
     exercise("Straight-leg deadlift", workSets, repGoal, "90-120 sec", "Use this variation to bias the posterior chain while keeping form clean."),
-  ];
+  ], intensityPhase);
 
-  const shouldersArmsTwo = [
+  const shouldersArmsTwo = applyAdvancedIntensityTechniques([
     exercise("Clean and press", workSets, repGoal, rest, "Stay explosive out of the clean and stacked on the press."),
     exercise("Lateral raise", workSets, repGoal, "45-60 sec", "Strict reps and no swinging through fatigue."),
     exercise("Upright row", workSets, repGoal, rest, "Pull smoothly to a comfortable shoulder height."),
@@ -606,40 +712,34 @@ function buildAdvancedBodybuildingDays(library: ExerciseLibrary): WorkoutDay[] {
     exercise("Overhead tricep extension", workSets, repGoal, "45-60 sec", "Keep elbows pointed forward and reach a full lockout."),
     exercise("Wrist curl up", workSets, repGoal, "30-45 sec", "Stay smooth and keep tension in the forearm flexors."),
     exercise("Wrist curl down", workSets, repGoal, "30-45 sec", "Use strict wrist motion and lighter load."),
-  ];
+  ], intensityPhase);
 
-  const legsTwo = [
-    exercise("Barbell squat", workSets, repGoal, rest, "Repeat the squat pattern and keep output high without losing depth."),
+  const legsTwo = applyAdvancedIntensityTechniques([
+    exercise(squatVariation, workSets, repGoal, rest, "Repeat the current squat variation and keep output high without losing depth."),
     exercise("Reverse lunge", workSets, repGoal, "60-90 sec", "Stay balanced and clean through each side."),
     exercise("Leg curl", workSets, repGoal, "45-60 sec", "Chase a hard hamstring squeeze with clean tempo."),
     exercise("Straight-leg deadlift", workSets, repGoal, rest, "Keep the bar close and the hamstrings loaded."),
     exercise("Good morning", workSets, repGoal, rest, "Treat this as strict lower-back and hinge practice under load."),
     exercise("Standing calf raise", workSets, repGoal, "30-45 sec", "Full stretch, hard squeeze, no bouncing."),
-  ];
+  ], intensityPhase);
 
   return [
     buildDay("day-1", "Mon: Chest + Back + Abs", "Arnold Variation #1 chest and back", "Advanced 60-75 minute muscle-build day. Pyramid your early sets, use clean reps, and let the final quality set on pulls approach failure when called for.", chestBackOne, {
-      supersets: [createSupersetGroup("day-1-abs-superset", "Advanced abs rotation", chestBackOneAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
       coreFinisher: chestBackOneAbs,
     }),
     buildDay("day-2", "Tue: Shoulders + Arms + Forearms + Abs", "Arnold Variation #1 shoulders and arms", "High-volume advanced upper-body work. Keep isolation strict, respect the short rests, and stop only when form starts to break.", shouldersArmsOne, {
-      supersets: [createSupersetGroup("day-2-abs-superset", "Advanced abs rotation", shouldersArmsOneAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
       coreFinisher: shouldersArmsOneAbs,
     }),
     buildDay("day-3", "Wed: Legs + Lower Back + Abs", "Arnold Variation #1 legs and lower back", "This is the lower-body and lower-back day. Keep the hinges disciplined and treat the whole session like high-volume advanced work.", legsOne, {
-      supersets: [createSupersetGroup("day-3-abs-superset", "Advanced abs rotation", legsOneAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
       coreFinisher: legsOneAbs,
     }),
     buildDay("day-4", "Thu: Chest + Back + Abs", "Arnold Variation #1 chest and back repeat", "Repeat the chest and back pattern with steady quality and controlled fatigue management.", chestBackTwo, {
-      supersets: [createSupersetGroup("day-4-abs-superset", "Advanced abs rotation", chestBackTwoAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
       coreFinisher: chestBackTwoAbs,
     }),
     buildDay("day-5", "Fri: Shoulders + Arms + Forearms + Abs", "Arnold Variation #1 shoulders and arms repeat", "Repeat the shoulder and arm volume with strict execution and controlled near-failure effort.", shouldersArmsTwo, {
-      supersets: [createSupersetGroup("day-5-abs-superset", "Advanced abs rotation", shouldersArmsTwoAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
       coreFinisher: shouldersArmsTwoAbs,
     }),
     buildDay("day-6", "Sat: Legs + Lower Back + Abs", "Arnold Variation #1 legs and lower back repeat", "Finish the week with disciplined leg and lower-back work before a full Sunday rest.", legsTwo, {
-      supersets: [createSupersetGroup("day-6-abs-superset", "Advanced abs rotation", legsTwoAbs.exercises, "30 sec after both exercises", "Rotate one front-core move with one oblique move.")],
       coreFinisher: legsTwoAbs,
     }),
   ];
@@ -649,7 +749,7 @@ export function canGenerateWorkoutPlan(input: WorkoutPlannerInput): boolean {
   return Boolean(input.fitnessGoal && input.workoutExperience && input.workoutLocation && input.activityLevel);
 }
 
-export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | null {
+export function generateWorkoutPlan(input: WorkoutPlannerInput, completedWorkoutCount = 0): WorkoutPlan | null {
   if (!canGenerateWorkoutPlan(input)) {
     return null;
   }
@@ -670,12 +770,14 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
     input.goalWeight,
   );
   const trainingDays = useAdvancedBodybuildingSplit ? 6 : defaultTrainingDays;
+  const weekIndex = resolveWeekIndex();
   const library = buildExerciseLibrary(location, equipment);
   const days = useAdvancedBodybuildingSplit
-    ? buildAdvancedBodybuildingDays(library)
+    ? buildAdvancedBodybuildingDays(library, weekIndex, completedWorkoutCount)
     : trainingDays <= 3
       ? buildFullBodyDays(trainingDays, library, goal, experience)
       : buildSplitDays(trainingDays, library, goal, experience);
+  const intensityPhase = resolveAdvancedIntensityPhase(completedWorkoutCount);
 
   if (__DEV__) {
     console.log("[workout-generator] plan selection", {
@@ -684,6 +786,9 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
       requestedLocation: input.workoutLocation,
       resolvedLocation: location,
       goalPace,
+      completedWorkoutCount,
+      intensityPhase,
+      weekIndex,
       trainingDays,
       branch: useAdvancedBodybuildingSplit
         ? "advanced-bodybuilding"
@@ -695,9 +800,12 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
 
   return {
     version: WORKOUT_PLAN_VERSION,
+    weekIndex,
+    completedWorkoutCount,
+    advancedIntensityPhase: intensityPhase,
     title:
       useAdvancedBodybuildingSplit
-        ? "Advanced Bodybuilding Rotation"
+        ? "Blaq Mass System v1"
         : goal === "fat-loss"
         ? "Lean & Athletic Week"
         : goal === "muscle-gain"
@@ -705,7 +813,7 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
           : "Strong Foundations Week",
     summary:
       useAdvancedBodybuildingSplit
-        ? "Arnold Schwarzenegger Workout Variation #1: an advanced six-day gym split for muscle gain with rotating abs and Sunday rest."
+        ? "High-volume advanced muscle-building protocol with rotating Blaq Core work."
         : goal === "fat-loss"
         ? "A balanced weekly structure with strength work, short core finishers, and steady conditioning support."
         : goal === "muscle-gain"
@@ -728,6 +836,14 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput): WorkoutPlan | n
       useAdvancedBodybuildingSplit
         ? "Abs rotate deterministically from the front-core and oblique pools on every training day in this split."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
+      useAdvancedBodybuildingSplit
+        ? `Current advanced variation block uses week ${weekIndex + 1}, rotating the secondary chest press and main squat every 2 weeks.`
+        : "Your plan structure stays stable so progress stays easy to track week to week.",
+      useAdvancedBodybuildingSplit && intensityPhase === "burnout"
+        ? "You have passed 2 weeks of completed training, so the last exercise on each day now adds one burnout set."
+        : useAdvancedBodybuildingSplit && intensityPhase === "tempo"
+          ? "You have passed 4 weeks of completed training, so the last exercise adds a burnout set and all advanced lifts use a 3-second eccentric cue."
+          : "Advanced intensity techniques unlock after multiple completed weeks of training.",
       input.goalWeight
         ? `Your current plan also tracks the direction toward ${input.goalWeight}${goalPace ? ` at a ${goalPace} pace` : ""}, using that as guidance instead of pressure.`
         : "Your current weight trend can shape the pace of the plan, but it never overrides recovery and consistency.",

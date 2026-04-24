@@ -7,6 +7,7 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { loadTodayBodyWeight, saveTodayBodyWeight } from "@/features/body-weight/body-weight-persistence";
+import { getExerciseDisplayName } from "@/features/workouts/exercise-library";
 import {
   buildWorkoutDayLog,
   deriveWorkoutVolumeSummary,
@@ -376,7 +377,7 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.supersetRest}>Rest after group: {options.superset.restAfterGroup}</Text>
           </View>
         ) : null}
-        <Text style={styles.exerciseCardTitle}>{exercise.name}</Text>
+        <Text style={styles.exerciseCardTitle}>{exercise.displayName ?? getExerciseDisplayName(exercise.name) ?? exercise.name}</Text>
         <Text style={styles.helperText}>Target: {exercise.sets} x {exercise.reps}</Text>
         <Text style={styles.helperText}>Rest target: {exercise.restTime}</Text>
         <View style={styles.exerciseSummaryRow}>

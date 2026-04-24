@@ -4,6 +4,66 @@ import { ExerciseDetailMetadata, ExerciseMetadata, ExerciseSubstitution, Exercis
 
 const placeholderImage = require("../../../assets/exercises/placeholder.png");
 
+const brandedExerciseNames: Partial<Record<string, string>> = {
+  "barbell-bench-press": "Blaq Iron Press",
+  "incline-bench-press": "Ascension Press",
+  "decline-bench-press": "Ascension Press",
+  "chest-fly": "Wing Expansion",
+  "dumbbell-pullover": "Core Stretch Pull",
+  "chest-dips": "Depth Drops",
+  "resistance-band-chest-press": "Resistance Pulse Press",
+  "wide-grip-pull-up": "Gravity Pull",
+  "assisted-pull-up-or-chin-up": "Gravity Pull",
+  "lat-pulldown": "Cable Descent",
+  "barbell-bent-over-row": "Iron Row System",
+  "barbell-deadlift": "Core Lift System",
+  "straight-leg-deadlift": "Foundation Lift",
+  "resistance-band-row": "Tension Row",
+  "clean-and-press": "Power Transfer Lift",
+  "dumbbell-shoulder-press": "Overload Press",
+  "front-raise": "Forward Lift",
+  "lateral-raise": "Wing Raise",
+  "upright-row": "Vertical Pull",
+  "reverse-fly": "Rear Expansion",
+  "barbell-curl": "Blaq Curl Protocol",
+  "incline-dumbbell-curl": "Stretch Curl",
+  "close-grip-chin-up": "Grip Pull",
+  "skullcrusher": "Breaker Press",
+  "overhead-tricep-extension": "Sky Extension",
+  "close-grip-bench-press": "Close Power Press",
+  "wrist-curl-up": "Forearm Rise",
+  "wrist-curl-down": "Forearm Control",
+  "barbell-squat": "Foundation Squat",
+  "front-squat": "Foundation Squat",
+  "goblet-squat": "Foundation Squat",
+  "good-morning": "Hinge Activation",
+  "leg-extension": "Quad Isolation",
+  "leg-curl": "Hamstring Lock",
+  "standing-calf-raise": "Calf Pulse",
+  "calf-raise": "Calf Pulse",
+  "reverse-lunge": "Step Back Power",
+  "split-squat": "Split Power Drive",
+  "step-up": "Elevation Step",
+  "glute-bridge": "Glute Lock",
+  "hanging-leg-raise": "Core Elevation",
+  "hanging-knee-raise": "Core Lift",
+  "toes-to-bar": "Bar Touch Protocol",
+  "decline-sit-up": "Core Compression",
+  "decline-crunch": "Decline Pulse",
+  "crunch": "Pulse Crunch",
+  "cable-crunch": "Cable Core Crush",
+  "medicine-ball-sit-up": "Weighted Core Rise",
+  "russian-twist": "Rotational Burn",
+  "cable-woodchop": "Core Slice",
+  "hanging-oblique-knee-raise": "Side Core Lift",
+  "side-plank-hip-dip": "Oblique Drop",
+  "plank": "Core Lock",
+  "hollow-hold": "Core Freeze",
+  "dead-bug": "Stability Flow",
+  "bird-dog": "Balance Flow",
+  "laying-leg-raise": "Floor Core Elevation",
+};
+
 type ExerciseOverrides = Partial<Omit<ExerciseMetadata, "slug" | "name" | "image" | "substitutions">> & {
   substitutions?: Array<{
     type: ExerciseSubstitutionType;
@@ -36,6 +96,7 @@ function createExerciseMetadata(name: string, overrides: ExerciseOverrides = {})
   return {
     slug,
     name,
+    displayName: overrides.displayName ?? brandedExerciseNames[slug],
     shortDescription: overrides.shortDescription,
     stepByStepInstructions: overrides.stepByStepInstructions ?? [],
     primaryMuscles: overrides.primaryMuscles ?? [],
@@ -52,6 +113,14 @@ function createExerciseMetadata(name: string, overrides: ExerciseOverrides = {})
       ) ?? [],
     ),
   };
+}
+
+export function getExerciseDisplayName(nameOrSlug: string) {
+  const normalizedSlug = nameOrSlug.includes(" ")
+    ? toExerciseSlug(nameOrSlug)
+    : nameOrSlug;
+
+  return brandedExerciseNames[normalizedSlug];
 }
 
 export function toExerciseSlug(name: string) {
@@ -966,9 +1035,16 @@ const detailedEntries: ExerciseMetadata[] = [
 ];
 
 const fallbackExerciseNames = [
+  "Decline bench press",
+  "Decline sit-up",
   "Dumbbell bench press",
+  "Front squat",
   "Incline push-up",
+  "Hanging knee raise",
   "Kettlebell floor press",
+  "Laying leg raise",
+  "Crunch",
+  "Medicine ball sit-up",
   "Pike push-up",
   "Resistance band row",
   "Assisted pull-up or chin-up",

@@ -5,10 +5,13 @@ export type SupportedWorkoutGoal = "fat-loss" | "muscle-gain" | "general-fitness
 export interface WorkoutExercise {
   slug?: string;
   name: string;
+  displayName?: string;
   sets: string;
   reps: string;
   restTime: string;
   notes: string;
+  burnoutSetNote?: string;
+  tempoCue?: string;
 }
 
 export type CoreFinisherEmphasis = "front-core-trunk-stability" | "obliques-side-core";
@@ -46,6 +49,9 @@ export interface WorkoutDay {
 
 export interface WorkoutPlan {
   version?: string;
+  weekIndex?: number;
+  completedWorkoutCount?: number;
+  advancedIntensityPhase?: "base" | "burnout" | "tempo";
   title: string;
   summary: string;
   trainingDays: number;
@@ -178,6 +184,7 @@ export interface StoredWorkoutDayLogRow {
 export interface ExerciseMetadata {
   slug: string;
   name: string;
+  displayName?: string;
   shortDescription?: string;
   stepByStepInstructions: string[];
   primaryMuscles: string[];

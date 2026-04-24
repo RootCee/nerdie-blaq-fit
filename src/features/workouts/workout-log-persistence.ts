@@ -189,6 +189,10 @@ export async function loadWorkoutDayLogs(): Promise<Record<string, WorkoutDayLog
   );
 }
 
+export function countCompletedWorkoutDays(logsByDay: Record<string, WorkoutDayLog>): number {
+  return Object.values(logsByDay).filter((log) => log.isCompleted).length;
+}
+
 function mapExerciseLogToPriorPerformance(
   dayLog: WorkoutDayLog,
   exerciseLog: WorkoutExerciseLog,
