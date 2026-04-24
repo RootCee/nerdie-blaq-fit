@@ -33,7 +33,7 @@ export default function ExerciseDetailScreen() {
     <>
       <Screen
         title={metadata.displayName ?? metadata.name}
-      subtitle={metadata.shortDescription ?? "Movement notes for this exercise are still growing, but the essentials will keep getting sharper."}
+        subtitle={metadata.shortDescription ?? "Movement notes for this exercise are still growing, but the essentials will keep getting sharper."}
         footer={<PrimaryButton label="Back to workout" onPress={() => router.back()} variant="ghost" />}
       >
         <Pressable onPress={() => setIsImageExpanded(true)}>
@@ -132,9 +132,9 @@ export default function ExerciseDetailScreen() {
               return <View key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}>{content}</View>;
             })
           ) : (
-          <Text style={styles.copy}>
-            Swap suggestions haven’t been added for this movement yet. Check back as the Nerdie Blaq Fit movement library grows.
-          </Text>
+            <Text style={styles.copy}>
+              Swap suggestions haven’t been added for this movement yet. Check back as the Nerdie Blaq Fit movement library grows.
+            </Text>
           )}
         </SectionCard>
       </Screen>
