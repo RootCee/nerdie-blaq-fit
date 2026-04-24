@@ -185,6 +185,7 @@ export interface ExerciseMetadata {
   workoutLocation: WorkoutLocation[];
   tips: string[];
   commonMistakes: string[];
+  localImage?: number;
   image: number;
   substitutions: ExerciseSubstitution[];
 }
