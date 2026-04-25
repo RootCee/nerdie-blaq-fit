@@ -11,7 +11,8 @@
       "expo-router",
       "expo-font",
       "expo-apple-authentication",
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-health"
     ],
     "experiments": {
       "typedRoutes": true
@@ -22,10 +23,12 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "supportsTablet": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "Nerdie Blaq Fit reads health data to personalize workouts, recovery, and progress tracking.",
+        "NSHealthUpdateUsageDescription": "Nerdie Blaq Fit writes completed workouts to Apple Health when you choose to sync."
       }
     },
     "android": {

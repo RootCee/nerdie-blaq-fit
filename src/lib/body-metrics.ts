@@ -25,25 +25,39 @@ export function parseWeightInKilograms(weight: string) {
   return pounds ? pounds / 2.20462 : null;
 }
 
-export function parseHeightInMeters(height: string) {
+export function parseHeightInInches(height: string) {
   const normalized = height.trim().toLowerCase();
-  const feetInchesMatch = normalized.match(/(\d+)\s*'\s*(\d+)?/);
+  const feetInchesMatch = normalized.match(/(\d+)\s*(?:'|ft|feet)\s*(\d+)?\s*(?:"|in|inch|inches)?/);
 
   if (feetInchesMatch) {
     const feet = Number.parseInt(feetInchesMatch[1], 10);
     const inches = Number.parseInt(feetInchesMatch[2] ?? "0", 10);
-    const totalInches = feet * 12 + inches;
-    return totalInches * 0.0254;
+    return feet * 12 + inches;
+  }
+
+  const spacedFeetInchesMatch = normalized.match(/^(\d+)\s+(\d{1,2})$/);
+  if (spacedFeetInchesMatch) {
+    const feet = Number.parseInt(spacedFeetInchesMatch[1], 10);
+    const inches = Number.parseInt(spacedFeetInchesMatch[2], 10);
+
+    if (feet > 0 && feet <= 8 && inches >= 0 && inches < 12) {
+      return feet * 12 + inches;
+    }
+  }
+
+  const inchesMatch = normalized.match(/(\d+(?:\.\d+)?)\s*(?:in|inch|inches)\b/);
+  if (inchesMatch) {
+    return Number.parseFloat(inchesMatch[1]);
   }
 
   const cmMatch = normalized.match(/(\d+(?:\.\d+)?)\s*cm/);
   if (cmMatch) {
-    return Number.parseFloat(cmMatch[1]) / 100;
+    return Number.parseFloat(cmMatch[1]) / 2.54;
   }
 
   const mMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m/);
   if (mMatch) {
-    return Number.parseFloat(mMatch[1]);
+    return Number.parseFloat(mMatch[1]) * 39.3701;
   }
 
   const plainNumber = Number.parseFloat(normalized.replace(/[^0-9.]/g, ""));
@@ -51,18 +65,35 @@ export function parseHeightInMeters(height: string) {
     return null;
   }
 
-  return plainNumber > 3 ? plainNumber / 100 : null;
+  if (plainNumber > 100) {
+    return plainNumber / 2.54;
+  }
+
+  if (plainNumber >= 36 && plainNumber <= 96) {
+    return plainNumber;
+  }
+
+  if (plainNumber > 0 && plainNumber <= 3) {
+    return plainNumber * 39.3701;
+  }
+
+  return null;
+}
+
+export function parseHeightInMeters(height: string) {
+  const inches = parseHeightInInches(height);
+  return inches ? inches * 0.0254 : null;
 }
 
 export function calculateBmi(height: string, weight: string): BmiSummary | null {
-  const meters = parseHeightInMeters(height);
-  const kilograms = parseWeightInKilograms(weight);
+  const heightInches = parseHeightInInches(height);
+  const weightPounds = parseWeightInPounds(weight);
 
-  if (!meters || !kilograms) {
+  if (!heightInches || !weightPounds) {
     return null;
   }
 
-  const value = Number((kilograms / (meters * meters)).toFixed(1));
+  const value = Number(((weightPounds / (heightInches * heightInches)) * 703).toFixed(1));
 
   if (value < 18.5) {
     return {

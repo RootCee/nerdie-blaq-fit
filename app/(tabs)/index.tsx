@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -131,27 +130,22 @@ export default function HomeScreen() {
         <Image source={require("../../assets/icon.png")} style={styles.brandLogo} resizeMode="contain" />
         <View style={styles.brandCopy}>
           <Text style={styles.brandTitle}>Nerdie Blaq Fit</Text>
-          <Text style={styles.brandTagline}>Music. Muscle. Mindset.</Text>
+          <Text style={styles.brandTagline}>Music. Money. Muscle.</Text>
         </View>
       </View>
 
-      <LinearGradient colors={["#F97316", "#FB7185", "#0F172A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-        <Text style={styles.heroEyebrow}>Today’s focus</Text>
-        <Text style={styles.heroTitle}>Consistency over chaos.</Text>
-        <Text style={styles.heroBody}>
+      <SectionCard title="Today's Focus" eyebrow="Daily mindset">
+        <Text style={styles.focusQuote}>{todaysFocusQuote}</Text>
+        <Text style={styles.focusCopy}>
           You’re set up for {profile.fitnessGoal?.replace("-", " ") ?? "general wellness"} with a {profile.workoutLocation ?? "flexible"} training setup.
         </Text>
-      </LinearGradient>
+      </SectionCard>
 
       <View style={styles.statsRow}>
         <StatChip label="Goal" value={profile.fitnessGoal ? profile.fitnessGoal.replace("-", " ") : "Set"} />
         <StatChip label="Activity" value={profile.activityLevel ? profile.activityLevel.replace("-", " ") : "Pending"} />
         <StatChip label="Diet" value={profile.dietaryPreference ? profile.dietaryPreference.replace("-", " ") : "Open"} />
       </View>
-
-      <SectionCard title="Today's Focus" eyebrow="Daily mindset">
-        <Text style={styles.focusQuote}>{todaysFocusQuote}</Text>
-      </SectionCard>
 
       <SectionCard title="Blaq Progress Dashboard" eyebrow="Body metrics">
         <View style={styles.progressHeaderRow}>
@@ -205,8 +199,18 @@ export default function HomeScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="What ships next" eyebrow="Roadmap">
-        <Text style={styles.copy}>Supabase auth, profile persistence, dynamic plans, and progress logging can plug into this structure without changing the screen architecture.</Text>
+      <SectionCard
+        title="Health Sync"
+        eyebrow="Apple Health"
+        action={
+          <View style={styles.previewBadge}>
+            <Text style={styles.previewBadgeText}>Coming soon</Text>
+          </View>
+        }
+      >
+        <Text style={styles.copy}>
+          Connect Apple Health to bring steps, activity, recovery, and body metrics into Nerdie Blaq Fit.
+        </Text>
       </SectionCard>
     </Screen>
   );
@@ -243,29 +247,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     lineHeight: 20,
-  },
-  hero: {
-    borderRadius: 28,
-    padding: spacing.xl,
-    gap: spacing.sm,
-  },
-  heroEyebrow: {
-    color: "#FFE7D6",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  heroTitle: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: "800",
-  },
-  heroBody: {
-    color: "#FDEDDC",
-    fontSize: 15,
-    lineHeight: 22,
-    maxWidth: "90%",
   },
   statsRow: {
     flexDirection: "row",
@@ -348,5 +329,24 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 28,
     textAlign: "center",
+  },
+  focusCopy: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  previewBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  previewBadgeText: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "700",
   },
 });
