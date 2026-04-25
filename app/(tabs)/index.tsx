@@ -128,7 +128,7 @@ export default function HomeScreen() {
   return (
     <Screen title="Welcome back" subtitle="Your dashboard is ready for personalized workout, nutrition, and habit layers.">
       <View style={styles.brandCard}>
-        <Image source={require("@/assets/icon.png")} style={styles.brandLogo} resizeMode="contain" />
+        <Image source={require("../../assets/icon.png")} style={styles.brandLogo} resizeMode="contain" />
         <View style={styles.brandCopy}>
           <Text style={styles.brandTitle}>Nerdie Blaq Fit</Text>
           <Text style={styles.brandTagline}>Music. Muscle. Mindset.</Text>
