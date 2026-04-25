@@ -7,7 +7,7 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { loadTodayBodyWeight, saveTodayBodyWeight } from "@/features/body-weight/body-weight-persistence";
-import { getExerciseDisplayName } from "@/features/workouts/exercise-library";
+import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
 import {
   buildWorkoutDayLog,
   deriveWorkoutVolumeSummary,
@@ -89,6 +89,26 @@ export default function WorkoutSessionScreen() {
   const [isSavingWeight, setIsSavingWeight] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weightError, setWeightError] = useState<string | null>(null);
+
+  const handleExercisePress = (name: string, slug?: string) => {
+    const resolvedSlug = slug ?? toExerciseSlug(name);
+
+    if (__DEV__) {
+      console.log("[workout-session] exercise slug tapped", resolvedSlug);
+    }
+
+    router.push({
+      pathname: "/exercise/[slug]" as never,
+      params: { slug: resolvedSlug, name } as never,
+    } as never);
+
+    if (__DEV__) {
+      console.log("[workout-session] route pushed", {
+        pathname: "/exercise/[slug]",
+        slug: resolvedSlug,
+      });
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -377,7 +397,10 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.supersetRest}>Rest after group: {options.superset.restAfterGroup}</Text>
           </View>
         ) : null}
-        <Text style={styles.exerciseCardTitle}>{exercise.displayName ?? getExerciseDisplayName(exercise.name) ?? exercise.name}</Text>
+        <Pressable onPress={() => handleExercisePress(exercise.name, exercise.slug)} style={styles.exerciseHeaderButton}>
+          <Text style={styles.exerciseCardTitle}>{exercise.displayName ?? getExerciseDisplayName(exercise.name) ?? exercise.name}</Text>
+          <Text style={styles.exerciseLink}>View movement notes</Text>
+        </Pressable>
         <Text style={styles.helperText}>Target: {exercise.sets} x {exercise.reps}</Text>
         <Text style={styles.helperText}>Rest target: {exercise.restTime}</Text>
         <View style={styles.exerciseSummaryRow}>
@@ -593,6 +616,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: "700",
+  },
+  exerciseHeaderButton: {
+    gap: 2,
+  },
+  exerciseLink: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   exerciseCard: {
     backgroundColor: colors.surfaceAlt,

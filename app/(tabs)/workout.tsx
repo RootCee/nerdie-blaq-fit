@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, InteractionManager, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -30,6 +30,16 @@ type ProgramTrackerSlot = {
   completed: boolean;
   isRestDay: boolean;
 };
+
+type PendingWorkoutRoute =
+  | {
+      pathname: "/exercise/[slug]";
+      params: { slug: string; name: string };
+    }
+  | {
+      pathname: "/workout-session/[dayId]";
+      params: { dayId: string };
+    };
 
 function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
   const supersetsBySlug = new Map(
@@ -160,6 +170,7 @@ export default function WorkoutScreen() {
   const [selectedProgramDay, setSelectedProgramDay] = useState(0);
   const [isDayDetailOpen, setIsDayDetailOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<PendingWorkoutRoute | null>(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -305,6 +316,61 @@ export default function WorkoutScreen() {
       isMounted = false;
     };
   }, [isComplete, persistenceConfig.isConfigured, scheduledGeneratedPlan]);
+
+  useEffect(() => {
+    if (isDayDetailOpen || !pendingRoute) {
+      return;
+    }
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (__DEV__) {
+        console.log("[workout-screen] modal closed before navigation", pendingRoute);
+      }
+
+      router.push({
+        pathname: pendingRoute.pathname as never,
+        params: pendingRoute.params as never,
+      } as never);
+
+      if (__DEV__) {
+        console.log("[workout-screen] route pushed", pendingRoute);
+      }
+
+      setPendingRoute(null);
+    });
+
+    return () => {
+      task.cancel();
+    };
+  }, [isDayDetailOpen, pendingRoute]);
+
+  const queueDayDetailNavigation = useCallback((route: PendingWorkoutRoute) => {
+    setPendingRoute(route);
+    setIsDayDetailOpen(false);
+  }, []);
+
+  const handleDayDetailExercisePress = useCallback((name: string, slug?: string) => {
+    const resolvedSlug = slug ?? toExerciseSlug(name);
+
+    if (__DEV__) {
+      console.log("[workout-screen] exercise slug tapped", resolvedSlug);
+    }
+
+    queueDayDetailNavigation({
+      pathname: "/exercise/[slug]",
+      params: {
+        slug: resolvedSlug,
+        name,
+      },
+    });
+  }, [queueDayDetailNavigation]);
+
+  const handleStartSessionFromDayDetail = useCallback((dayId: string) => {
+    queueDayDetailNavigation({
+      pathname: "/workout-session/[dayId]",
+      params: { dayId },
+    });
+  }, [queueDayDetailNavigation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -547,15 +613,7 @@ export default function WorkoutScreen() {
                           </View>
                         ) : null}
                         <Pressable
-                          onPress={() =>
-                            router.push({
-                              pathname: "/exercise/[slug]" as never,
-                              params: {
-                                slug: item.slug ?? toExerciseSlug(item.name),
-                                name: item.name,
-                              } as never,
-                            } as never)
-                          }
+                          onPress={() => handleDayDetailExercisePress(item.name, item.slug)}
                         >
                           <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
                           <Text style={styles.exerciseLink}>View movement notes</Text>
@@ -583,15 +641,7 @@ export default function WorkoutScreen() {
                         {selectedDay.coreFinisher.exercises.map((item) => (
                           <View key={`${selectedDay.id}-core-${item.name}`} style={styles.coreFinisherExercise}>
                             <Pressable
-                              onPress={() =>
-                                router.push({
-                                  pathname: "/exercise/[slug]" as never,
-                                  params: {
-                                    slug: item.slug ?? toExerciseSlug(item.name),
-                                    name: item.name,
-                                  } as never,
-                                } as never)
-                              }
+                              onPress={() => handleDayDetailExercisePress(item.name, item.slug)}
                             >
                               <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
                               <Text style={styles.exerciseLink}>View movement notes</Text>
@@ -610,15 +660,7 @@ export default function WorkoutScreen() {
 
                   <PrimaryButton
                     label={selectedSlot?.completed ? "Update Session" : "Start Session"}
-                    onPress={() => {
-                      setIsDayDetailOpen(false);
-                      router.push({
-                        pathname: "/workout-session/[dayId]" as never,
-                        params: {
-                          dayId: selectedDay.id,
-                        } as never,
-                      } as never);
-                    }}
+                    onPress={() => handleStartSessionFromDayDetail(selectedDay.id)}
                   />
                 </>
               ) : (

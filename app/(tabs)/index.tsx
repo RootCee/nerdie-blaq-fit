@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { Screen } from "@/components/ui/Screen";
@@ -127,6 +127,14 @@ export default function HomeScreen() {
 
   return (
     <Screen title="Welcome back" subtitle="Your dashboard is ready for personalized workout, nutrition, and habit layers.">
+      <View style={styles.brandCard}>
+        <Image source={require("@/assets/icon.png")} style={styles.brandLogo} resizeMode="contain" />
+        <View style={styles.brandCopy}>
+          <Text style={styles.brandTitle}>Nerdie Blaq Fit</Text>
+          <Text style={styles.brandTagline}>Music. Muscle. Mindset.</Text>
+        </View>
+      </View>
+
       <LinearGradient colors={["#F97316", "#FB7185", "#0F172A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
         <Text style={styles.heroEyebrow}>Today’s focus</Text>
         <Text style={styles.heroTitle}>Consistency over chaos.</Text>
@@ -205,6 +213,37 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  brandCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 24,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  brandLogo: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+  },
+  brandCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  brandTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  brandTagline: {
+    color: colors.primarySoft,
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+  },
   hero: {
     borderRadius: 28,
     padding: spacing.xl,

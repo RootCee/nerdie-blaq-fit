@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
-import { getExerciseDisplayName } from "@/features/workouts/exercise-library";
+import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
 import { deriveWorkoutVolumeSummary, loadWorkoutDayLog } from "@/features/workouts/workout-log-persistence";
 import { loadActiveWorkoutPlan } from "@/features/workouts/workout-plan-persistence";
 import { colors, spacing } from "@/theme";
@@ -88,6 +88,26 @@ export default function WorkoutHistoryDetailScreen() {
   const [plannedDay, setPlannedDay] = useState<WorkoutDay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const handleExercisePress = (name: string, slug?: string) => {
+    const resolvedSlug = slug ?? toExerciseSlug(name);
+
+    if (__DEV__) {
+      console.log("[workout-history] exercise slug tapped", resolvedSlug);
+    }
+
+    router.push({
+      pathname: "/exercise/[slug]" as never,
+      params: { slug: resolvedSlug, name } as never,
+    } as never);
+
+    if (__DEV__) {
+      console.log("[workout-history] route pushed", {
+        pathname: "/exercise/[slug]",
+        slug: resolvedSlug,
+      });
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -194,7 +214,10 @@ export default function WorkoutHistoryDetailScreen() {
             <Text style={styles.supersetRest}>Rest after group: {options.superset.restAfterGroup}</Text>
           </View>
         ) : null}
-        <Text style={styles.exerciseName}>{exercise.displayName ?? getExerciseDisplayName(entry.exerciseName) ?? entry.exerciseName}</Text>
+        <Pressable onPress={() => handleExercisePress(entry.exerciseName, exercise.slug)} style={styles.exerciseHeaderButton}>
+          <Text style={styles.exerciseName}>{exercise.displayName ?? getExerciseDisplayName(entry.exerciseName) ?? entry.exerciseName}</Text>
+          <Text style={styles.exerciseLink}>View movement notes</Text>
+        </Pressable>
         <Text style={styles.metaLine}>{entry.sets.filter((set) => set.isCompleted).length} completed sets</Text>
         {comparison ? (
           <View style={styles.comparisonBlock}>
@@ -387,6 +410,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: "700",
+  },
+  exerciseHeaderButton: {
+    gap: 2,
+  },
+  exerciseLink: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   metaLine: {
     color: colors.primarySoft,
