@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { deriveBodyWeightHistorySummary } from "@/features/body-weight/body-weight-history";
 import { loadRecentBodyWeightHistory } from "@/features/body-weight/body-weight-persistence";
 import { calculateBmi, parseWeightInPounds } from "@/lib/body-metrics";
+import {
+  getHealthKitAuthorizationStatus,
+  getTodayActiveCalories,
+  getTodaySteps,
+  getTodayWorkouts,
+  initializeHealthKit,
+} from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { colors, spacing } from "@/theme";
 import { BodyWeightHistorySummary } from "@/types/body-weight";
@@ -68,10 +76,39 @@ function resolveProgressPercent(currentWeight: number | null, goalWeight: number
   return clamp(Math.round((progressMade / totalChangeNeeded) * 100));
 }
 
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function resolveActivityStatus(steps: number, activeCalories: number, workoutsCompleted: number) {
+  if (workoutsCompleted >= 2 || steps >= 12000 || activeCalories >= 800) {
+    return "High activity";
+  }
+
+  if (workoutsCompleted >= 1 || steps >= 6000 || activeCalories >= 300) {
+    return "Moderate activity";
+  }
+
+  return "Low activity";
+}
+
 export default function HomeScreen() {
   const { profile } = useOnboardingStore();
   const [bodyWeightSummary, setBodyWeightSummary] = useState<BodyWeightHistorySummary | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
+  const [isHealthAuthorized, setIsHealthAuthorized] = useState(false);
+  const [isHealthLoading, setIsHealthLoading] = useState(true);
+  const [isEnablingHealthSync, setIsEnablingHealthSync] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [healthRefreshNonce, setHealthRefreshNonce] = useState(0);
+  const [healthData, setHealthData] = useState({
+    steps: 0,
+    activeCalories: 0,
+    workoutsCompleted: 0,
+  });
   const todaysFocusQuote = useMemo(() => {
     const now = new Date();
     const startOfYear = new Date(now.getFullYear(), 0, 0);
@@ -110,6 +147,95 @@ export default function HomeScreen() {
     };
   }, [profile.goalPace, profile.goalWeight, profile.weight]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateHealthSyncStatus() {
+      try {
+        const authorized = await getHealthKitAuthorizationStatus();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setIsHealthAuthorized(authorized);
+        setHealthError(null);
+
+        if (!authorized) {
+          setHealthData({
+            steps: 0,
+            activeCalories: 0,
+            workoutsCompleted: 0,
+          });
+        }
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsHealthAuthorized(false);
+        setHealthError("Health Sync is not available right now.");
+      } finally {
+        if (isMounted) {
+          setIsHealthLoading(false);
+        }
+      }
+    }
+
+    void hydrateHealthSyncStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateHealthData() {
+      if (!isHealthAuthorized) {
+        return;
+      }
+
+      setIsHealthLoading(true);
+
+      try {
+        const [steps, activeCalories, workoutsCompleted] = await Promise.all([
+          getTodaySteps(),
+          getTodayActiveCalories(),
+          getTodayWorkouts(),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setHealthData({
+          steps,
+          activeCalories,
+          workoutsCompleted,
+        });
+        setHealthError(null);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        setHealthError("We couldn't load Apple Health data just now.");
+      } finally {
+        if (isMounted) {
+          setIsHealthLoading(false);
+        }
+      }
+    }
+
+    void hydrateHealthData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [healthRefreshNonce, isHealthAuthorized]);
+
   const currentWeightPounds = useMemo(() => parseWeightInPounds(profile.weight), [profile.weight]);
   const goalWeightPounds = useMemo(() => parseWeightInPounds(profile.goalWeight), [profile.goalWeight]);
   const bmiSummary = useMemo(() => calculateBmi(profile.height, profile.weight), [profile.height, profile.weight]);
@@ -123,6 +249,31 @@ export default function HomeScreen() {
     [currentWeightPounds, goalWeightPounds],
   );
   const weeklyChange = bodyWeightSummary?.weeklyChange ?? null;
+  const activityStatus = useMemo(
+    () => resolveActivityStatus(healthData.steps, healthData.activeCalories, healthData.workoutsCompleted),
+    [healthData.activeCalories, healthData.steps, healthData.workoutsCompleted],
+  );
+
+  const handleEnableHealthSync = async () => {
+    setIsEnablingHealthSync(true);
+    setHealthError(null);
+
+    try {
+      const authorized = await initializeHealthKit();
+      setIsHealthAuthorized(authorized);
+
+      if (!authorized) {
+        setHealthError("Apple Health access was not enabled.");
+      } else {
+        setHealthRefreshNonce((current) => current + 1);
+      }
+    } catch {
+      setIsHealthAuthorized(false);
+      setHealthError("We couldn't connect to Apple Health right now.");
+    } finally {
+      setIsEnablingHealthSync(false);
+    }
+  };
 
   return (
     <Screen title="Welcome back" subtitle="Your dashboard is ready for personalized workout, nutrition, and habit layers.">
@@ -199,18 +350,57 @@ export default function HomeScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard
-        title="Health Sync"
-        eyebrow="Apple Health"
-        action={
-          <View style={styles.previewBadge}>
-            <Text style={styles.previewBadgeText}>Coming soon</Text>
-          </View>
-        }
-      >
-        <Text style={styles.copy}>
-          Connect Apple Health to bring steps, activity, recovery, and body metrics into Nerdie Blaq Fit.
-        </Text>
+      <SectionCard title={isHealthAuthorized ? "Health Sync" : "Connect Apple Health"} eyebrow="Apple Health">
+        {!isHealthAuthorized ? (
+          <>
+            <Text style={styles.copy}>
+              Connect Apple Health to bring steps, activity, recovery, and body metrics into Nerdie Blaq Fit.
+            </Text>
+            <PrimaryButton
+              label={isEnablingHealthSync ? "Connecting..." : "Enable Health Sync"}
+              onPress={() => void handleEnableHealthSync()}
+              disabled={isEnablingHealthSync || isHealthLoading}
+            />
+          </>
+        ) : (
+          <>
+            <View style={styles.healthStatsRow}>
+              <View style={styles.healthMetric}>
+                <Text style={styles.progressLabel}>Steps Today</Text>
+                <Text style={styles.healthValue}>{formatCompactNumber(healthData.steps)}</Text>
+              </View>
+              <View style={styles.healthMetric}>
+                <Text style={styles.progressLabel}>Active Calories</Text>
+                <Text style={styles.healthValue}>{formatCompactNumber(healthData.activeCalories)}</Text>
+              </View>
+              <View style={styles.healthMetric}>
+                <Text style={styles.progressLabel}>Workouts Completed</Text>
+                <Text style={styles.healthValue}>{healthData.workoutsCompleted}</Text>
+              </View>
+            </View>
+
+            <View style={styles.healthStatusRow}>
+              <Text style={styles.progressLabel}>Status</Text>
+              <View style={styles.healthStatusBadge}>
+                <Text style={styles.healthStatusText}>{isHealthLoading ? "Refreshing..." : activityStatus}</Text>
+              </View>
+            </View>
+
+            <PrimaryButton
+              label={isHealthLoading ? "Refreshing..." : "Refresh Health Data"}
+              onPress={() => setHealthRefreshNonce((current) => current + 1)}
+              variant="ghost"
+              disabled={isHealthLoading || isEnablingHealthSync}
+            />
+          </>
+        )}
+
+        {healthError ? <Text style={styles.progressError}>{healthError}</Text> : null}
+        {isHealthAuthorized && !healthError ? (
+          <Text style={styles.healthHelper}>
+            {isHealthLoading ? "Loading your Apple Health summary..." : "Apple Health data updates from the start of today through now."}
+          </Text>
+        ) : null}
       </SectionCard>
     </Screen>
   );
@@ -348,5 +538,50 @@ const styles = StyleSheet.create({
     color: colors.primarySoft,
     fontSize: 12,
     fontWeight: "700",
+  },
+  healthStatsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+  healthMetric: {
+    flex: 1,
+    minWidth: 140,
+    padding: spacing.md,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  healthValue: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 28,
+  },
+  healthStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  healthStatusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    backgroundColor: "rgba(20, 184, 166, 0.14)",
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  healthStatusText: {
+    color: colors.accentSoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  healthHelper: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
   },
 });
