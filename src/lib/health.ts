@@ -73,7 +73,11 @@ function checkAvailability() {
       return;
     }
 
-    AppleHealthKit.isAvailable((_error, results) => {
+    AppleHealthKit.isAvailable((error, results) => {
+      if (error) {
+        console.error("[HealthKit] isAvailable failed:", error);
+      }
+
       resolve(Boolean(results));
     });
   });
@@ -88,6 +92,7 @@ function getAuthStatus() {
 
     AppleHealthKit.getAuthStatus(HEALTHKIT_PERMISSIONS, (error, results) => {
       if (error) {
+        console.error("[HealthKit] getAuthStatus failed:", error);
         resolve(null);
         return;
       }
@@ -106,6 +111,13 @@ function initHealthKit() {
 
     AppleHealthKit.initHealthKit(HEALTHKIT_PERMISSIONS, async (error) => {
       const isAuthorized = !error;
+
+      if (error) {
+        console.error("[HealthKit] initHealthKit failed:", error);
+      } else {
+        console.log("[HealthKit] initHealthKit succeeded.");
+      }
+
       await setStoredAuthorization(isAuthorized);
       resolve(isAuthorized);
     });

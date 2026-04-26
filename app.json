@@ -23,8 +23,11 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "14",
+      "buildNumber": "15",
       "supportsTablet": true,
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSHealthShareUsageDescription": "Nerdie Blaq Fit reads health data to personalize workouts, recovery, and progress tracking.",
