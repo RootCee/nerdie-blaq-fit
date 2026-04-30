@@ -6,6 +6,7 @@ import AppleHealthKit, {
   HealthObserver,
   HealthStatusCode,
   HealthStatusResult,
+  HealthUnit,
   HealthValue,
   HKWorkoutQueriedSampleType,
 } from "react-native-health";
@@ -18,6 +19,7 @@ const HEALTHKIT_PERMISSIONS: HealthKitPermissions = {
       AppleHealthKit.Constants.Permissions.StepCount,
       AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
       AppleHealthKit.Constants.Permissions.RestingHeartRate,
+      AppleHealthKit.Constants.Permissions.Weight,
       AppleHealthKit.Constants.Permissions.Workout,
     ],
     write: [],
@@ -57,9 +59,11 @@ function getTodayRange(): Required<Pick<HealthInputOptions, "startDate" | "endDa
 }
 
 function isHealthStatusAuthorized(status: HealthStatusResult | null | undefined) {
-  return Boolean(
-    status?.permissions.write.some((permissionCode) => permissionCode === HealthStatusCode.SharingAuthorized),
-  );
+  return Boolean(status?.permissions.read.some((permissionCode) => permissionCode === HealthStatusCode.SharingAuthorized));
+}
+
+function isHealthStatusPermissionDenied(status: HealthStatusResult | null | undefined) {
+  return Boolean(status?.permissions.read.some((permissionCode) => permissionCode === HealthStatusCode.SharingDenied));
 }
 
 async function setStoredAuthorization(isAuthorized: boolean) {
@@ -215,6 +219,49 @@ function getWorkoutSamples(options: HealthInputOptions) {
   });
 }
 
+export interface HealthKitWeightSample {
+  value: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface HealthKitSyncSnapshot {
+  available: boolean;
+  authorized: boolean;
+  permissionDenied: boolean;
+  steps: number;
+  activeCalories: number;
+  workoutsCompleted: number;
+  latestWeight: HealthKitWeightSample | null;
+  hasAnyData: boolean;
+}
+
+function getLatestWeightSample() {
+  return new Promise<HealthKitWeightSample | null>((resolve) => {
+    AppleHealthKit.getLatestWeight({ unit: HealthUnit.pound }, (error, results) => {
+      if (error) {
+        console.error("[HealthKit] getLatestWeight failed.", {
+          platform: Platform.OS,
+          error: formatHealthKitError(error),
+        });
+        resolve(null);
+        return;
+      }
+
+      if (!results || typeof results.value !== "number") {
+        resolve(null);
+        return;
+      }
+
+      resolve({
+        value: Number(results.value.toFixed(1)),
+        startDate: results.startDate,
+        endDate: results.endDate,
+      });
+    });
+  });
+}
+
 export async function getHealthKitAuthorizationStatus() {
   const isAvailable = await checkAvailability();
 
@@ -243,6 +290,78 @@ export async function initializeHealthKit() {
 
 export function getHealthKitUnavailableMessage() {
   return HEALTHKIT_UNAVAILABLE_MESSAGE;
+}
+
+export function getHealthKitPermissionDeniedMessage() {
+  return "Apple Health permissions were denied. Enable access in the Health app and try again.";
+}
+
+export function getHealthKitNoDataMessage() {
+  return "No Apple Health data was found yet. Add data in Apple Health and try Recalibrate again.";
+}
+
+export async function getHealthKitSyncSnapshot(): Promise<HealthKitSyncSnapshot> {
+  const isAvailable = await checkAvailability();
+
+  if (!isAvailable) {
+    return {
+      available: false,
+      authorized: false,
+      permissionDenied: false,
+      steps: 0,
+      activeCalories: 0,
+      workoutsCompleted: 0,
+      latestWeight: null,
+      hasAnyData: false,
+    };
+  }
+
+  const authStatus = await getAuthStatus();
+  const authorized = isHealthStatusAuthorized(authStatus);
+  const permissionDenied = !authorized && isHealthStatusPermissionDenied(authStatus);
+
+  if (!authorized) {
+    return {
+      available: true,
+      authorized: false,
+      permissionDenied,
+      steps: 0,
+      activeCalories: 0,
+      workoutsCompleted: 0,
+      latestWeight: null,
+      hasAnyData: false,
+    };
+  }
+
+  const [steps, activeCalories, workoutsCompleted, latestWeight] = await Promise.all([
+    getStepCount(getTodayRange()),
+    getActiveEnergySamples({
+      ...getTodayRange(),
+      ascending: false,
+    }).then((samples) =>
+      Math.round(
+        samples.reduce((sum, sample) => {
+          return sum + (typeof sample.value === "number" ? sample.value : 0);
+        }, 0),
+      ),
+    ),
+    getWorkoutSamples({
+      ...getTodayRange(),
+      ascending: false,
+    }).then((workouts) => workouts.length),
+    getLatestWeightSample(),
+  ]);
+
+  return {
+    available: true,
+    authorized: true,
+    permissionDenied: false,
+    steps,
+    activeCalories,
+    workoutsCompleted,
+    latestWeight,
+    hasAnyData: steps > 0 || activeCalories > 0 || workoutsCompleted > 0 || latestWeight !== null,
+  };
 }
 
 export async function getTodaySteps() {

@@ -7,19 +7,18 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { deriveBodyWeightHistorySummary } from "@/features/body-weight/body-weight-history";
 import { loadRecentBodyWeightHistory } from "@/features/body-weight/body-weight-persistence";
-import { calculateBmi, parseWeightInPounds } from "@/lib/body-metrics";
+import { calculateBmi, parseWeightInKilograms, parseWeightInPounds } from "@/lib/body-metrics";
 import {
-  getHealthKitAuthorizationStatus,
+  type HealthKitWeightSample,
+  getHealthKitNoDataMessage,
+  getHealthKitPermissionDeniedMessage,
+  getHealthKitSyncSnapshot,
   getHealthKitUnavailableMessage,
-  isHealthKitAvailable,
-  getTodayActiveCalories,
-  getTodaySteps,
-  getTodayWorkouts,
   initializeHealthKit,
 } from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { colors, spacing } from "@/theme";
-import { BodyWeightHistorySummary } from "@/types/body-weight";
+import { BodyWeightLogRecord } from "@/types/body-weight";
 
 const DAILY_FOCUS_QUOTES = [
   "Discipline builds the version of you that motivation only talks about.",
@@ -97,15 +96,96 @@ function resolveActivityStatus(steps: number, activeCalories: number, workoutsCo
   return "Low activity";
 }
 
+function formatLastSyncedLabel(timestamp: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
+
+function formatWeightFromPounds(weightInPounds: number, profileWeight: string) {
+  if (profileWeight.trim().toLowerCase().includes("kg")) {
+    const weightInKilograms = parseWeightInKilograms(`${weightInPounds} lb`);
+    return weightInKilograms ? `${weightInKilograms.toFixed(1)} kg` : `${weightInPounds.toFixed(1)} lb`;
+  }
+
+  return `${weightInPounds.toFixed(1)} lb`;
+}
+
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getComparableTimestamp(record: Pick<BodyWeightLogRecord, "loggedOn" | "createdAt" | "updatedAt">) {
+  const timestamp = Date.parse(record.updatedAt || record.createdAt || record.loggedOn);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getComparableSampleTimestamp(sample: HealthKitWeightSample) {
+  const timestamp = Date.parse(sample.endDate || sample.startDate);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function mergeHealthWeightIntoHistory(entries: BodyWeightLogRecord[], sample: HealthKitWeightSample | null) {
+  if (!sample) {
+    return entries;
+  }
+
+  const sampleDate = new Date(sample.endDate || sample.startDate);
+  const loggedOn = formatDateKey(sampleDate);
+  const healthRecord: BodyWeightLogRecord = {
+    userId: entries[0]?.userId ?? "healthkit",
+    loggedOn,
+    weight: Number(sample.value.toFixed(1)),
+    createdAt: sample.startDate,
+    updatedAt: sample.endDate,
+  };
+
+  const sameDayIndex = entries.findIndex((entry) => entry.loggedOn === loggedOn);
+
+  if (sameDayIndex === -1) {
+    return [healthRecord, ...entries].sort((left, right) => getComparableTimestamp(right) - getComparableTimestamp(left));
+  }
+
+  const nextEntries = [...entries];
+  if (getComparableSampleTimestamp(sample) > getComparableTimestamp(nextEntries[sameDayIndex])) {
+    nextEntries[sameDayIndex] = healthRecord;
+  }
+
+  return nextEntries.sort((left, right) => getComparableTimestamp(right) - getComparableTimestamp(left));
+}
+
+function shouldUseHealthWeightSample(profileWeight: string, entries: BodyWeightLogRecord[], sample: HealthKitWeightSample | null) {
+  if (!sample) {
+    return false;
+  }
+
+  if (!profileWeight.trim()) {
+    return true;
+  }
+
+  const latestExistingEntry = entries[0];
+  if (!latestExistingEntry) {
+    return false;
+  }
+
+  return getComparableSampleTimestamp(sample) > getComparableTimestamp(latestExistingEntry);
+}
+
 export default function HomeScreen() {
   const { profile } = useOnboardingStore();
-  const [bodyWeightSummary, setBodyWeightSummary] = useState<BodyWeightHistorySummary | null>(null);
+  const [bodyWeightEntries, setBodyWeightEntries] = useState<BodyWeightLogRecord[]>([]);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [isHealthAuthorized, setIsHealthAuthorized] = useState(false);
   const [isHealthLoading, setIsHealthLoading] = useState(true);
   const [isEnablingHealthSync, setIsEnablingHealthSync] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const [healthRefreshNonce, setHealthRefreshNonce] = useState(0);
+  const [lastHealthWeightSample, setLastHealthWeightSample] = useState<HealthKitWeightSample | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [healthData, setHealthData] = useState({
     steps: 0,
     activeCalories: 0,
@@ -125,14 +205,9 @@ export default function HomeScreen() {
     async function hydrateProgress() {
       try {
         const entries = await loadRecentBodyWeightHistory(7);
-        const summary = deriveBodyWeightHistorySummary(entries, {
-          goalWeight: profile.goalWeight,
-          goalPace: profile.goalPace,
-          currentWeight: profile.weight,
-        });
 
         if (isMounted) {
-          setBodyWeightSummary(summary);
+          setBodyWeightEntries(entries);
           setProgressError(null);
         }
       } catch (error) {
@@ -154,13 +229,13 @@ export default function HomeScreen() {
 
     async function hydrateHealthSyncStatus() {
       try {
-        const isAvailable = await isHealthKitAvailable();
+        const snapshot = await getHealthKitSyncSnapshot();
 
-        if (!isAvailable) {
-          if (!isMounted) {
-            return;
-          }
+        if (!isMounted) {
+          return;
+        }
 
+        if (!snapshot.available) {
           setIsHealthAuthorized(false);
           setHealthData({
             steps: 0,
@@ -171,22 +246,26 @@ export default function HomeScreen() {
           return;
         }
 
-        const authorized = await getHealthKitAuthorizationStatus();
+        setIsHealthAuthorized(snapshot.authorized);
+        setLastHealthWeightSample(snapshot.latestWeight);
 
-        if (!isMounted) {
-          return;
-        }
-
-        setIsHealthAuthorized(authorized);
-        setHealthError(null);
-
-        if (!authorized) {
+        if (!snapshot.authorized) {
           setHealthData({
             steps: 0,
             activeCalories: 0,
             workoutsCompleted: 0,
           });
+          setHealthError(snapshot.permissionDenied ? getHealthKitPermissionDeniedMessage() : null);
+          return;
         }
+
+        setHealthData({
+          steps: snapshot.steps,
+          activeCalories: snapshot.activeCalories,
+          workoutsCompleted: snapshot.workoutsCompleted,
+        });
+        setLastSyncedAt(new Date().toISOString());
+        setHealthError(snapshot.hasAnyData ? null : getHealthKitNoDataMessage());
       } catch {
         if (!isMounted) {
           return;
@@ -208,57 +287,34 @@ export default function HomeScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function hydrateHealthData() {
-      if (!isHealthAuthorized) {
-        return;
-      }
-
-      setIsHealthLoading(true);
-
-      try {
-        const [steps, activeCalories, workoutsCompleted] = await Promise.all([
-          getTodaySteps(),
-          getTodayActiveCalories(),
-          getTodayWorkouts(),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setHealthData({
-          steps,
-          activeCalories,
-          workoutsCompleted,
-        });
-        setHealthError(null);
-      } catch {
-        if (!isMounted) {
-          return;
-        }
-
-        setHealthError("We couldn't load Apple Health data just now.");
-      } finally {
-        if (isMounted) {
-          setIsHealthLoading(false);
-        }
-      }
-    }
-
-    void hydrateHealthData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [healthRefreshNonce, isHealthAuthorized]);
-
   const currentWeightPounds = useMemo(() => parseWeightInPounds(profile.weight), [profile.weight]);
   const goalWeightPounds = useMemo(() => parseWeightInPounds(profile.goalWeight), [profile.goalWeight]);
-  const bmiSummary = useMemo(() => calculateBmi(profile.height, profile.weight), [profile.height, profile.weight]);
-  const latestWeight = bodyWeightSummary?.latestWeight ?? currentWeightPounds;
+  const shouldAdoptHealthWeight = useMemo(
+    () => shouldUseHealthWeightSample(profile.weight, bodyWeightEntries, lastHealthWeightSample),
+    [bodyWeightEntries, lastHealthWeightSample, profile.weight],
+  );
+  const mergedBodyWeightEntries = useMemo(
+    () => mergeHealthWeightIntoHistory(bodyWeightEntries, lastHealthWeightSample),
+    [bodyWeightEntries, lastHealthWeightSample],
+  );
+  const bodyWeightSummary = useMemo(
+    () =>
+      deriveBodyWeightHistorySummary(mergedBodyWeightEntries, {
+        goalWeight: profile.goalWeight,
+        goalPace: profile.goalPace,
+        currentWeight: profile.weight,
+      }),
+    [mergedBodyWeightEntries, profile.goalPace, profile.goalWeight, profile.weight],
+  );
+  const dashboardWeight = useMemo(() => {
+    if (bodyWeightSummary.latestWeight !== null && (bodyWeightEntries.length > 0 || shouldAdoptHealthWeight)) {
+      return formatWeightFromPounds(bodyWeightSummary.latestWeight, profile.weight);
+    }
+
+    return profile.weight;
+  }, [bodyWeightEntries.length, bodyWeightSummary.latestWeight, profile.weight, shouldAdoptHealthWeight]);
+  const bmiSummary = useMemo(() => calculateBmi(profile.height, dashboardWeight), [dashboardWeight, profile.height]);
+  const latestWeight = bodyWeightSummary.latestWeight ?? currentWeightPounds;
   const progressPercent = useMemo(
     () => resolveProgressPercent(currentWeightPounds, goalWeightPounds, latestWeight),
     [currentWeightPounds, goalWeightPounds, latestWeight],
@@ -267,32 +323,83 @@ export default function HomeScreen() {
     () => resolvePhaseLabel(currentWeightPounds, goalWeightPounds),
     [currentWeightPounds, goalWeightPounds],
   );
-  const weeklyChange = bodyWeightSummary?.weeklyChange ?? null;
+  const weeklyChange = bodyWeightSummary.weeklyChange ?? null;
   const activityStatus = useMemo(
     () => resolveActivityStatus(healthData.steps, healthData.activeCalories, healthData.workoutsCompleted),
     [healthData.activeCalories, healthData.steps, healthData.workoutsCompleted],
   );
+
+  const handleRecalibrateHealthData = async (options?: { suppressUnauthorizedError?: boolean }) => {
+    setIsHealthLoading(true);
+    setHealthError(null);
+
+    try {
+      const snapshot = await getHealthKitSyncSnapshot();
+
+      if (!snapshot.available) {
+        setIsHealthAuthorized(false);
+        setHealthData({
+          steps: 0,
+          activeCalories: 0,
+          workoutsCompleted: 0,
+        });
+        setHealthError(getHealthKitUnavailableMessage());
+        return;
+      }
+
+      setIsHealthAuthorized(snapshot.authorized);
+
+      if (!snapshot.authorized) {
+        setHealthData({
+          steps: 0,
+          activeCalories: 0,
+          workoutsCompleted: 0,
+        });
+        setHealthError(
+          snapshot.permissionDenied
+            ? getHealthKitPermissionDeniedMessage()
+            : options?.suppressUnauthorizedError
+              ? null
+              : "Apple Health access was not enabled.",
+        );
+        return;
+      }
+
+      setHealthData({
+        steps: snapshot.steps,
+        activeCalories: snapshot.activeCalories,
+        workoutsCompleted: snapshot.workoutsCompleted,
+      });
+      setLastHealthWeightSample(snapshot.latestWeight);
+      setLastSyncedAt(new Date().toISOString());
+      setHealthError(snapshot.hasAnyData ? null : getHealthKitNoDataMessage());
+    } catch {
+      setIsHealthAuthorized(false);
+      setHealthError("We couldn't connect to Apple Health right now.");
+    } finally {
+      setIsHealthLoading(false);
+    }
+  };
 
   const handleEnableHealthSync = async () => {
     setIsEnablingHealthSync(true);
     setHealthError(null);
 
     try {
-      const isAvailable = await isHealthKitAvailable();
-
-      if (!isAvailable) {
-        setIsHealthAuthorized(false);
-        setHealthError(getHealthKitUnavailableMessage());
-        return;
-      }
-
       const authorized = await initializeHealthKit();
       setIsHealthAuthorized(authorized);
 
       if (!authorized) {
-        setHealthError("Apple Health access was not enabled.");
+        const snapshot = await getHealthKitSyncSnapshot();
+        setHealthError(
+          !snapshot.available
+            ? getHealthKitUnavailableMessage()
+            : snapshot.permissionDenied
+              ? getHealthKitPermissionDeniedMessage()
+              : "Apple Health access was not enabled.",
+        );
       } else {
-        setHealthRefreshNonce((current) => current + 1);
+        await handleRecalibrateHealthData({ suppressUnauthorizedError: true });
       }
     } catch {
       setIsHealthAuthorized(false);
@@ -329,9 +436,7 @@ export default function HomeScreen() {
         <View style={styles.progressHeaderRow}>
           <View style={styles.progressMetric}>
             <Text style={styles.progressLabel}>Current weight</Text>
-            <Text style={styles.progressValue}>
-              {bodyWeightSummary?.latestWeight ? `${bodyWeightSummary.latestWeight} lb` : formatWeight(profile.weight)}
-            </Text>
+            <Text style={styles.progressValue}>{dashboardWeight ? formatWeight(dashboardWeight) : "Not set"}</Text>
           </View>
           <View style={styles.progressMetric}>
             <Text style={styles.progressLabel}>Goal weight</Text>
@@ -414,8 +519,8 @@ export default function HomeScreen() {
             </View>
 
             <PrimaryButton
-              label={isHealthLoading ? "Refreshing..." : "Refresh Health Data"}
-              onPress={() => setHealthRefreshNonce((current) => current + 1)}
+              label={isHealthLoading ? "Recalibrating..." : "Recalibrate"}
+              onPress={() => void handleRecalibrateHealthData()}
               variant="ghost"
               disabled={isHealthLoading || isEnablingHealthSync}
             />
@@ -423,6 +528,7 @@ export default function HomeScreen() {
         )}
 
         {healthError ? <Text style={styles.progressError}>{healthError}</Text> : null}
+        {lastSyncedAt ? <Text style={styles.healthHelper}>Last synced: {formatLastSyncedLabel(lastSyncedAt)}</Text> : null}
         {isHealthAuthorized && !healthError ? (
           <Text style={styles.healthHelper}>
             {isHealthLoading ? "Loading your Apple Health summary..." : "Apple Health data updates from the start of today through now."}
