@@ -10,6 +10,8 @@ import { loadRecentBodyWeightHistory } from "@/features/body-weight/body-weight-
 import { calculateBmi, parseWeightInPounds } from "@/lib/body-metrics";
 import {
   getHealthKitAuthorizationStatus,
+  getHealthKitUnavailableMessage,
+  isHealthKitAvailable,
   getTodayActiveCalories,
   getTodaySteps,
   getTodayWorkouts,
@@ -152,6 +154,23 @@ export default function HomeScreen() {
 
     async function hydrateHealthSyncStatus() {
       try {
+        const isAvailable = await isHealthKitAvailable();
+
+        if (!isAvailable) {
+          if (!isMounted) {
+            return;
+          }
+
+          setIsHealthAuthorized(false);
+          setHealthData({
+            steps: 0,
+            activeCalories: 0,
+            workoutsCompleted: 0,
+          });
+          setHealthError(getHealthKitUnavailableMessage());
+          return;
+        }
+
         const authorized = await getHealthKitAuthorizationStatus();
 
         if (!isMounted) {
@@ -259,6 +278,14 @@ export default function HomeScreen() {
     setHealthError(null);
 
     try {
+      const isAvailable = await isHealthKitAvailable();
+
+      if (!isAvailable) {
+        setIsHealthAuthorized(false);
+        setHealthError(getHealthKitUnavailableMessage());
+        return;
+      }
+
       const authorized = await initializeHealthKit();
       setIsHealthAuthorized(authorized);
 

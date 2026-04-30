@@ -24,6 +24,23 @@ const HEALTHKIT_PERMISSIONS: HealthKitPermissions = {
   },
 };
 
+const HEALTHKIT_UNAVAILABLE_MESSAGE = "HealthKit is not available in this build. Rebuild the app after enabling HealthKit.";
+
+function formatHealthKitError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    raw: error,
+    message: typeof error === "string" ? error : null,
+  };
+}
+
 function isIosHealthSupported() {
   return Platform.OS === "ios";
 }
@@ -69,18 +86,32 @@ async function getStoredAuthorization() {
 function checkAvailability() {
   return new Promise<boolean>((resolve) => {
     if (!isIosHealthSupported()) {
+      console.warn("[HealthKit] Availability check skipped because platform is not iOS.", {
+        platform: Platform.OS,
+      });
       resolve(false);
       return;
     }
 
     AppleHealthKit.isAvailable((error, results) => {
       if (error) {
-        console.error("[HealthKit] isAvailable failed:", error);
+        console.error("[HealthKit] isAvailable failed.", {
+          platform: Platform.OS,
+          error: formatHealthKitError(error),
+        });
       }
 
+      console.log("[HealthKit] Availability result.", {
+        platform: Platform.OS,
+        available: Boolean(results),
+      });
       resolve(Boolean(results));
     });
   });
+}
+
+export async function isHealthKitAvailable() {
+  return checkAvailability();
 }
 
 function getAuthStatus() {
@@ -105,17 +136,32 @@ function getAuthStatus() {
 function initHealthKit() {
   return new Promise<boolean>((resolve) => {
     if (!isIosHealthSupported()) {
+      console.warn("[HealthKit] initHealthKit skipped because platform is not iOS.", {
+        platform: Platform.OS,
+      });
       resolve(false);
       return;
     }
+
+    console.log("[HealthKit] initHealthKit requested.", {
+      platform: Platform.OS,
+      permissions: HEALTHKIT_PERMISSIONS.permissions,
+    });
 
     AppleHealthKit.initHealthKit(HEALTHKIT_PERMISSIONS, async (error) => {
       const isAuthorized = !error;
 
       if (error) {
-        console.error("[HealthKit] initHealthKit failed:", error);
+        console.error("[HealthKit] initHealthKit failed.", {
+          platform: Platform.OS,
+          error: formatHealthKitError(error),
+          permissions: HEALTHKIT_PERMISSIONS.permissions,
+        });
       } else {
-        console.log("[HealthKit] initHealthKit succeeded.");
+        console.log("[HealthKit] initHealthKit succeeded.", {
+          platform: Platform.OS,
+          permissions: HEALTHKIT_PERMISSIONS.permissions,
+        });
       }
 
       await setStoredAuthorization(isAuthorized);
@@ -184,10 +230,19 @@ export async function initializeHealthKit() {
   const isAvailable = await checkAvailability();
 
   if (!isAvailable) {
+    console.warn("[HealthKit] initializeHealthKit aborted because HealthKit is unavailable.", {
+      platform: Platform.OS,
+      available: false,
+      permissions: HEALTHKIT_PERMISSIONS.permissions,
+    });
     return false;
   }
 
   return initHealthKit();
+}
+
+export function getHealthKitUnavailableMessage() {
+  return HEALTHKIT_UNAVAILABLE_MESSAGE;
 }
 
 export async function getTodaySteps() {
