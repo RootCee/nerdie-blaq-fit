@@ -156,11 +156,7 @@ function initHealthKit() {
       const isAuthorized = !error;
 
       if (error) {
-        console.error("[HealthKit] initHealthKit failed.", {
-          platform: Platform.OS,
-          error: formatHealthKitError(error),
-          permissions: HEALTHKIT_PERMISSIONS.permissions,
-        });
+        console.error(`[HealthKit] initHealthKit failed — exact error: ${String(error)}`);
       } else {
         console.log("[HealthKit] initHealthKit succeeded.", {
           platform: Platform.OS,

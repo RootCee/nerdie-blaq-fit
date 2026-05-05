@@ -23,7 +23,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "15",
+      "buildNumber": "17",
       "supportsTablet": true,
       "entitlements": {
         "com.apple.developer.healthkit": true
