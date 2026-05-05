@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
@@ -11,8 +11,14 @@ import {
   linkGoogleAccount,
   SessionStatus,
 } from "@/lib/social-auth";
+import { supabase } from "@/lib/supabase";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { colors, spacing } from "@/theme";
+
+function formatProvider(provider: string | null): string {
+  if (!provider) return "Signed in";
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
 
 export default function ProfileScreen() {
   const { profile, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
@@ -20,14 +26,26 @@ export default function ProfileScreen() {
   const [isLinking, setIsLinking] = useState<"apple" | "google" | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadStatus();
-  }, []);
-
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     const status = await getSessionStatus();
     setSessionStatus(status);
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  // Reload session status whenever auth state changes (e.g. after OAuth callback completes).
+  useEffect(() => {
+    if (!supabase) return;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log(`[profile] onAuthStateChange — event: ${event}, userId: ${session?.user?.id ?? "none"}, is_anonymous: ${session?.user?.is_anonymous}`);
+      void loadStatus();
+    });
+    return () => subscription.unsubscribe();
+  }, [loadStatus]);
 
   const handleLink = async (provider: "apple" | "google") => {
     setIsLinking(provider);
@@ -116,17 +134,14 @@ export default function ProfileScreen() {
         </SectionCard>
       ) : (
         <SectionCard
-          title="Account linked"
-          eyebrow={sessionStatus.provider ?? "Signed in"}
+          title="Account connected"
+          eyebrow={formatProvider(sessionStatus.provider)}
         >
           {sessionStatus.email ? (
-            <Text style={styles.item}>Signed in as {sessionStatus.email}</Text>
-          ) : (
-            <Text style={styles.item}>Account linked</Text>
-          )}
+            <Text style={styles.item}>{sessionStatus.email}</Text>
+          ) : null}
           <Text style={styles.copy}>
-            Your profile and workout history are backed up. Sign in with the same account on
-            any device to restore your data.
+            Your profile and workout history are backed up and available on any device.
           </Text>
         </SectionCard>
       )}

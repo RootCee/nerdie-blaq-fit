@@ -38,13 +38,33 @@ async function linkIdentityOAuth(provider: "google" | "apple"): Promise<void> {
   if (error) throw error;
   if (!data?.url) throw new Error("No OAuth URL returned from Supabase.");
 
+  console.log(`[social-auth] opening browser for provider: ${provider}`);
   const result = await WebBrowser.openAuthSessionAsync(data.url, AUTH_REDIRECT);
+  console.log(`[social-auth] browser result type: ${result.type}`);
 
   if (result.type === "success") {
     const code = extractCode(result.url);
+    console.log(`[social-auth] callback received — provider: ${provider}, code present: ${Boolean(code)}`);
     if (code) {
-      const { error: codeError } = await supabase.auth.exchangeCodeForSession(code);
+      const { data: sessionData, error: codeError } = await supabase.auth.exchangeCodeForSession(code);
       if (codeError) throw codeError;
+
+      const exchangedUser = sessionData.session?.user;
+      console.log(`[social-auth] exchangeCodeForSession — userId: ${exchangedUser?.id ?? "none"}`);
+      console.log(`[social-auth] exchangeCodeForSession — email: ${exchangedUser?.email ?? "none"}`);
+      console.log(`[social-auth] exchangeCodeForSession — is_anonymous: ${exchangedUser?.is_anonymous}`);
+      console.log(`[social-auth] exchangeCodeForSession — identities: ${JSON.stringify((exchangedUser?.identities ?? []).map((id) => id.provider))}`);
+
+      // Force-refresh local session cache so the next getUser() call
+      // sends the newly-issued access token rather than a stale one.
+      const { data: { session: refreshedSession } } = await supabase.auth.getSession();
+      console.log(`[social-auth] getSession post-exchange — userId: ${refreshedSession?.user?.id ?? "none"}`);
+
+      // Authoritative server-side state — reflects the linked identity.
+      const { data: { user: serverUser } } = await supabase.auth.getUser();
+      console.log(`[social-auth] getUser post-exchange — is_anonymous: ${serverUser?.is_anonymous}`);
+      console.log(`[social-auth] getUser post-exchange — identities: ${JSON.stringify((serverUser?.identities ?? []).map((id) => id.provider))}`);
+      console.log(`[social-auth] getUser post-exchange — provider: ${serverUser?.app_metadata?.provider as string | undefined ?? "none"}`);
     }
   } else if (result.type === "cancel") {
     throw new Error("Sign-in was cancelled.");
@@ -76,15 +96,46 @@ export interface SessionStatus {
 export async function getSessionStatus(): Promise<SessionStatus> {
   if (!supabase) return { isAnonymous: true, userId: null, email: null, provider: null };
 
-  const { data } = await supabase.auth.getSession();
-  const user = data.session?.user;
+  // Step 1: refresh local session cache (resolves AsyncStorage write before server call).
+  const { data: { session } } = await supabase.auth.getSession();
+  console.log(`[social-auth] getSessionStatus — local session userId: ${session?.user?.id ?? "none"}, is_anonymous: ${session?.user?.is_anonymous}`);
 
-  if (!user) return { isAnonymous: true, userId: null, email: null, provider: null };
+  // Step 2: getUser() fetches authoritative state from the server — is_anonymous and
+  // identities reflect the post-link state rather than stale cached JWT claims.
+  const { data: { user }, error } = await supabase.auth.getUser();
 
-  return {
-    isAnonymous: (user as unknown as { is_anonymous?: boolean }).is_anonymous === true,
+  if (error || !user) {
+    console.log("[social-auth] getUser returned no user:", error?.message ?? "no user");
+    return { isAnonymous: true, userId: null, email: null, provider: null };
+  }
+
+  const identities = user.identities ?? [];
+  // A social identity is any provider other than the anonymous placeholder.
+  const socialIdentity = identities.find(
+    (id) => id.provider !== "anonymous" && id.provider !== "email",
+  );
+
+  // Prefer the linked social identity's provider; fall back to app_metadata.provider.
+  const provider =
+    socialIdentity?.provider ??
+    (user.app_metadata?.provider as string | undefined) ??
+    null;
+
+  // Anonymous only when the server confirms it AND no social identity is attached.
+  const isAnonymous = user.is_anonymous === true && !socialIdentity;
+
+  const email =
+    user.email ??
+    (socialIdentity?.identity_data?.email as string | undefined) ??
+    null;
+
+  console.log("[social-auth] status:", {
     userId: user.id,
-    email: user.email ?? null,
-    provider: (user.app_metadata?.provider as string | undefined) ?? null,
-  };
+    email,
+    isAnonymous,
+    provider,
+    identities: identities.map((id) => id.provider),
+  });
+
+  return { isAnonymous, userId: user.id, email, provider };
 }
