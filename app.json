@@ -3,10 +3,11 @@
     "name": "Nerdie Blaq Fit",
     "slug": "nerdie-blaq-fit",
     "scheme": "nerdieblaqfit",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "jsEngine": "hermes",
+    "newArchEnabled": false,
     "plugins": [
       "expo-router",
       "expo-font",
@@ -23,13 +24,17 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "17",
-      "supportsTablet": true,
+      "buildNumber": "23",
+      "supportsTablet": false,
       "entitlements": {
         "com.apple.developer.healthkit": true
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiredDeviceCapabilities": [
+          "arm64",
+          "healthkit"
+        ],
         "NSHealthShareUsageDescription": "Nerdie Blaq Fit reads health data to personalize workouts, recovery, and progress tracking.",
         "NSHealthUpdateUsageDescription": "Nerdie Blaq Fit writes completed workouts to Apple Health when you choose to sync."
       }

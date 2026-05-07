@@ -26,7 +26,8 @@ const HEALTHKIT_PERMISSIONS: HealthKitPermissions = {
   },
 };
 
-const HEALTHKIT_UNAVAILABLE_MESSAGE = "HealthKit is not available in this build. Rebuild the app after enabling HealthKit.";
+const HEALTHKIT_UNAVAILABLE_MESSAGE = "Apple Health is unavailable on this device. Use a real iPhone with Apple Health; HealthKit is not available in Expo Go, simulator-only builds, or unsupported iPad installs.";
+let lastHealthKitDebugReason: string | null = null;
 
 function formatHealthKitError(error: unknown) {
   if (error instanceof Error) {
@@ -41,6 +42,39 @@ function formatHealthKitError(error: unknown) {
     raw: error,
     message: typeof error === "string" ? error : null,
   };
+}
+
+function stringifyHealthKitError(error: unknown) {
+  if (!error) {
+    return "none";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(formatHealthKitError(error));
+  } catch {
+    return String(error);
+  }
+}
+
+function setHealthKitDebugReason(reason: string | null) {
+  lastHealthKitDebugReason = reason;
+}
+
+function getPermissionDebugList() {
+  return {
+    read: HEALTHKIT_PERMISSIONS.permissions.read,
+    write: HEALTHKIT_PERMISSIONS.permissions.write,
+  };
+}
+
+function hasNativeHealthKitModule() {
+  return typeof AppleHealthKit.isAvailable === "function"
+    && typeof AppleHealthKit.initHealthKit === "function"
+    && typeof AppleHealthKit.getAuthStatus === "function";
 }
 
 function isIosHealthSupported() {
@@ -90,8 +124,24 @@ async function getStoredAuthorization() {
 function checkAvailability() {
   return new Promise<boolean>((resolve) => {
     if (!isIosHealthSupported()) {
+      const reason = `Apple Health is only available on iOS. Current platform: ${Platform.OS}.`;
+      setHealthKitDebugReason(reason);
       console.warn("[HealthKit] Availability check skipped because platform is not iOS.", {
         platform: Platform.OS,
+        reason,
+        permissions: getPermissionDebugList(),
+      });
+      resolve(false);
+      return;
+    }
+
+    if (!hasNativeHealthKitModule()) {
+      const reason = "react-native-health native module is not available in this binary. Install a fresh dev/prod build that includes the react-native-health config plugin and HealthKit entitlement.";
+      setHealthKitDebugReason(reason);
+      console.error("[HealthKit] Native module missing.", {
+        platform: Platform.OS,
+        reason,
+        permissions: getPermissionDebugList(),
       });
       resolve(false);
       return;
@@ -99,15 +149,27 @@ function checkAvailability() {
 
     AppleHealthKit.isAvailable((error, results) => {
       if (error) {
+        const reason = `AppleHealthKit.isAvailable error: ${stringifyHealthKitError(error)}`;
+        setHealthKitDebugReason(reason);
         console.error("[HealthKit] isAvailable failed.", {
           platform: Platform.OS,
           error: formatHealthKitError(error),
+          reason,
+          permissions: getPermissionDebugList(),
         });
+      }
+
+      if (!error) {
+        setHealthKitDebugReason(
+          results ? null : "AppleHealthKit.isAvailable returned false because iOS reported Health data is not available on this device/runtime.",
+        );
       }
 
       console.log("[HealthKit] Availability result.", {
         platform: Platform.OS,
         available: Boolean(results),
+        rawResult: results,
+        permissions: getPermissionDebugList(),
       });
       resolve(Boolean(results));
     });
@@ -127,11 +189,23 @@ function getAuthStatus() {
 
     AppleHealthKit.getAuthStatus(HEALTHKIT_PERMISSIONS, (error, results) => {
       if (error) {
-        console.error("[HealthKit] getAuthStatus failed:", error);
+        const reason = `AppleHealthKit.getAuthStatus error: ${stringifyHealthKitError(error)}`;
+        setHealthKitDebugReason(reason);
+        console.error("[HealthKit] getAuthStatus failed.", {
+          platform: Platform.OS,
+          error: formatHealthKitError(error),
+          reason,
+          permissions: getPermissionDebugList(),
+        });
         resolve(null);
         return;
       }
 
+      console.log("[HealthKit] getAuthStatus result.", {
+        platform: Platform.OS,
+        status: results,
+        permissions: getPermissionDebugList(),
+      });
       resolve(results);
     });
   });
@@ -149,18 +223,26 @@ function initHealthKit() {
 
     console.log("[HealthKit] initHealthKit requested.", {
       platform: Platform.OS,
-      permissions: HEALTHKIT_PERMISSIONS.permissions,
+      permissions: getPermissionDebugList(),
     });
 
     AppleHealthKit.initHealthKit(HEALTHKIT_PERMISSIONS, async (error) => {
       const isAuthorized = !error;
 
       if (error) {
-        console.error(`[HealthKit] initHealthKit failed — exact error: ${String(error)}`);
-      } else {
-        console.log("[HealthKit] initHealthKit succeeded.", {
+        const reason = `AppleHealthKit.initHealthKit error: ${stringifyHealthKitError(error)}`;
+        setHealthKitDebugReason(reason);
+        console.error("[HealthKit] initHealthKit failed.", {
           platform: Platform.OS,
-          permissions: HEALTHKIT_PERMISSIONS.permissions,
+          error: formatHealthKitError(error),
+          reason,
+          permissions: getPermissionDebugList(),
+        });
+      } else {
+        setHealthKitDebugReason(null);
+        console.log("[HealthKit] initHealthKit success.", {
+          platform: Platform.OS,
+          permissions: getPermissionDebugList(),
         });
       }
 
@@ -174,10 +256,19 @@ function getStepCount(options: HealthInputOptions) {
   return new Promise<number>((resolve) => {
     AppleHealthKit.getStepCount(options, (error, results) => {
       if (error || typeof results?.value !== "number") {
+        console.log("[HealthKit] getStepCount result.", {
+          value: 0,
+          error: error ? formatHealthKitError(error) : null,
+          rawResult: results,
+        });
         resolve(0);
         return;
       }
 
+      console.log("[HealthKit] getStepCount result.", {
+        value: Math.round(results.value),
+        error: null,
+      });
       resolve(Math.round(results.value));
     });
   });
@@ -187,10 +278,19 @@ function getActiveEnergySamples(options: HealthInputOptions) {
   return new Promise<HealthValue[]>((resolve) => {
     AppleHealthKit.getActiveEnergyBurned(options, (error, results) => {
       if (error || !Array.isArray(results)) {
+        console.log("[HealthKit] getActiveEnergyBurned result.", {
+          sampleCount: 0,
+          error: error ? formatHealthKitError(error) : null,
+          rawResult: results,
+        });
         resolve([]);
         return;
       }
 
+      console.log("[HealthKit] getActiveEnergyBurned result.", {
+        sampleCount: results.length,
+        error: null,
+      });
       resolve(results);
     });
   });
@@ -205,10 +305,19 @@ function getWorkoutSamples(options: HealthInputOptions) {
       },
       (error, results) => {
         if (error || !Array.isArray(results)) {
+          console.log("[HealthKit] getWorkoutSamples result.", {
+            sampleCount: 0,
+            error: error ? formatHealthKitError(error) : null,
+            rawResult: results,
+          });
           resolve([]);
           return;
         }
 
+        console.log("[HealthKit] getWorkoutSamples result.", {
+          sampleCount: results.length,
+          error: null,
+        });
         resolve(results as unknown as HKWorkoutQueriedSampleType[]);
       },
     );
@@ -230,6 +339,7 @@ export interface HealthKitSyncSnapshot {
   workoutsCompleted: number;
   latestWeight: HealthKitWeightSample | null;
   hasAnyData: boolean;
+  debugReason: string | null;
 }
 
 function getLatestWeightSample() {
@@ -265,8 +375,7 @@ export async function getHealthKitAuthorizationStatus() {
     return false;
   }
 
-  const [storedAuthorized, authStatus] = await Promise.all([getStoredAuthorization(), getAuthStatus()]);
-  return storedAuthorized || isHealthStatusAuthorized(authStatus);
+  return getStoredAuthorization();
 }
 
 export async function initializeHealthKit() {
@@ -276,7 +385,8 @@ export async function initializeHealthKit() {
     console.warn("[HealthKit] initializeHealthKit aborted because HealthKit is unavailable.", {
       platform: Platform.OS,
       available: false,
-      permissions: HEALTHKIT_PERMISSIONS.permissions,
+      reason: lastHealthKitDebugReason,
+      permissions: getPermissionDebugList(),
     });
     return false;
   }
@@ -285,7 +395,9 @@ export async function initializeHealthKit() {
 }
 
 export function getHealthKitUnavailableMessage() {
-  return HEALTHKIT_UNAVAILABLE_MESSAGE;
+  return lastHealthKitDebugReason
+    ? `${HEALTHKIT_UNAVAILABLE_MESSAGE} Reason: ${lastHealthKitDebugReason}`
+    : HEALTHKIT_UNAVAILABLE_MESSAGE;
 }
 
 export function getHealthKitPermissionDeniedMessage() {
@@ -294,6 +406,10 @@ export function getHealthKitPermissionDeniedMessage() {
 
 export function getHealthKitNoDataMessage() {
   return "No Apple Health data was found yet. Add data in Apple Health and try Recalibrate again.";
+}
+
+export function getHealthKitDebugReason() {
+  return lastHealthKitDebugReason;
 }
 
 export async function getHealthKitSyncSnapshot(): Promise<HealthKitSyncSnapshot> {
@@ -309,12 +425,14 @@ export async function getHealthKitSyncSnapshot(): Promise<HealthKitSyncSnapshot>
       workoutsCompleted: 0,
       latestWeight: null,
       hasAnyData: false,
+      debugReason: lastHealthKitDebugReason,
     };
   }
 
   const authStatus = await getAuthStatus();
-  const authorized = isHealthStatusAuthorized(authStatus);
+  const authorized = await getStoredAuthorization();
   const permissionDenied = !authorized && isHealthStatusPermissionDenied(authStatus);
+  setHealthKitDebugReason(authorized ? null : "Apple Health has not been connected yet.");
 
   if (!authorized) {
     return {
@@ -326,6 +444,7 @@ export async function getHealthKitSyncSnapshot(): Promise<HealthKitSyncSnapshot>
       workoutsCompleted: 0,
       latestWeight: null,
       hasAnyData: false,
+      debugReason: lastHealthKitDebugReason,
     };
   }
 
@@ -357,6 +476,7 @@ export async function getHealthKitSyncSnapshot(): Promise<HealthKitSyncSnapshot>
     workoutsCompleted,
     latestWeight,
     hasAnyData: steps > 0 || activeCalories > 0 || workoutsCompleted > 0 || latestWeight !== null,
+    debugReason: lastHealthKitDebugReason,
   };
 }
 

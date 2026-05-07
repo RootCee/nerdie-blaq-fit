@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { mapProfileToSupabaseRow } from "@/lib/onboarding-persistence";
 import {
   getSessionStatus,
   linkAppleAccount,
@@ -21,7 +22,7 @@ function formatProvider(provider: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { profile, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
+  const { isComplete, profile, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [isLinking, setIsLinking] = useState<"apple" | "google" | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
@@ -62,8 +63,22 @@ export default function ProfileScreen() {
         await linkGoogleAccount();
       }
 
+      const status = await getSessionStatus();
+      if (supabase && status.userId && !status.isAnonymous) {
+        const { error: profileSaveError } = await supabase
+          .from("profiles")
+          .upsert(
+            mapProfileToSupabaseRow(status.userId, profile, isComplete) as Record<string, unknown>,
+            { onConflict: "id" },
+          );
+
+        if (profileSaveError) {
+          throw profileSaveError;
+        }
+      }
+
       await refreshProfile();
-      await loadStatus();
+      setSessionStatus(status);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign-in failed. Please try again.";
       if (!message.toLowerCase().includes("cancel")) {

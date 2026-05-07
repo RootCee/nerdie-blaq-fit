@@ -1,11 +1,32 @@
 import { ThemeProvider } from "@react-navigation/native";
+import { useEffect } from "react";
+import { Linking } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
+import { handleAuthCallbackUrl } from "@/lib/social-auth";
 import { OnboardingStoreProvider } from "@/store/onboarding-store";
 import { appTheme } from "@/theme";
 
 export default function RootLayout() {
+  useEffect(() => {
+    const processUrl = (url: string | null) => {
+      if (url) {
+        void handleAuthCallbackUrl(url);
+      }
+    };
+
+    void Linking.getInitialURL().then(processUrl);
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      processUrl(url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   return (
     <OnboardingStoreProvider>
       <ThemeProvider value={appTheme}>

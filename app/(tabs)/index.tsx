@@ -14,6 +14,7 @@ import {
   getHealthKitPermissionDeniedMessage,
   getHealthKitSyncSnapshot,
   getHealthKitUnavailableMessage,
+  getHealthKitDebugReason,
   initializeHealthKit,
 } from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
@@ -184,6 +185,7 @@ export default function HomeScreen() {
   const [isHealthLoading, setIsHealthLoading] = useState(true);
   const [isEnablingHealthSync, setIsEnablingHealthSync] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [healthDebugReason, setHealthDebugReason] = useState<string | null>(null);
   const [lastHealthWeightSample, setLastHealthWeightSample] = useState<HealthKitWeightSample | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [healthData, setHealthData] = useState({
@@ -235,6 +237,8 @@ export default function HomeScreen() {
           return;
         }
 
+        setHealthDebugReason(snapshot.debugReason);
+
         if (!snapshot.available) {
           setIsHealthAuthorized(false);
           setHealthData({
@@ -265,13 +269,14 @@ export default function HomeScreen() {
           workoutsCompleted: snapshot.workoutsCompleted,
         });
         setLastSyncedAt(new Date().toISOString());
-        setHealthError(snapshot.hasAnyData ? null : getHealthKitNoDataMessage());
+        setHealthError(null);
       } catch {
         if (!isMounted) {
           return;
         }
 
         setIsHealthAuthorized(false);
+        setHealthDebugReason(getHealthKitDebugReason());
         setHealthError("Health Sync is not available right now.");
       } finally {
         if (isMounted) {
@@ -335,6 +340,7 @@ export default function HomeScreen() {
 
     try {
       const snapshot = await getHealthKitSyncSnapshot();
+      setHealthDebugReason(snapshot.debugReason);
 
       if (!snapshot.available) {
         setIsHealthAuthorized(false);
@@ -372,9 +378,10 @@ export default function HomeScreen() {
       });
       setLastHealthWeightSample(snapshot.latestWeight);
       setLastSyncedAt(new Date().toISOString());
-      setHealthError(snapshot.hasAnyData ? null : getHealthKitNoDataMessage());
+      setHealthError(null);
     } catch {
       setIsHealthAuthorized(false);
+      setHealthDebugReason(getHealthKitDebugReason());
       setHealthError("We couldn't connect to Apple Health right now.");
     } finally {
       setIsHealthLoading(false);
@@ -387,10 +394,12 @@ export default function HomeScreen() {
 
     try {
       const authorized = await initializeHealthKit();
+      setHealthDebugReason(getHealthKitDebugReason());
       setIsHealthAuthorized(authorized);
 
       if (!authorized) {
         const snapshot = await getHealthKitSyncSnapshot();
+        setHealthDebugReason(snapshot.debugReason);
         setHealthError(
           !snapshot.available
             ? getHealthKitUnavailableMessage()
@@ -403,6 +412,7 @@ export default function HomeScreen() {
       }
     } catch {
       setIsHealthAuthorized(false);
+      setHealthDebugReason(getHealthKitDebugReason());
       setHealthError("We couldn't connect to Apple Health right now.");
     } finally {
       setIsEnablingHealthSync(false);
@@ -528,6 +538,9 @@ export default function HomeScreen() {
         )}
 
         {healthError ? <Text style={styles.progressError}>{healthError}</Text> : null}
+        {__DEV__ && healthDebugReason ? (
+          <Text style={styles.healthHelper}>Debug: {healthDebugReason}</Text>
+        ) : null}
         {lastSyncedAt ? <Text style={styles.healthHelper}>Last synced: {formatLastSyncedLabel(lastSyncedAt)}</Text> : null}
         {isHealthAuthorized && !healthError ? (
           <Text style={styles.healthHelper}>

@@ -45,6 +45,16 @@ export function parseHeightInInches(height: string) {
     }
   }
 
+  const commaFeetInchesMatch = normalized.match(/^(\d+)\s*,\s*(\d{1,2})$/);
+  if (commaFeetInchesMatch) {
+    const feet = Number.parseInt(commaFeetInchesMatch[1], 10);
+    const inches = Number.parseInt(commaFeetInchesMatch[2], 10);
+
+    if (feet > 0 && feet <= 8 && inches >= 0 && inches < 12) {
+      return feet * 12 + inches;
+    }
+  }
+
   const inchesMatch = normalized.match(/(\d+(?:\.\d+)?)\s*(?:in|inch|inches)\b/);
   if (inchesMatch) {
     return Number.parseFloat(inchesMatch[1]);
