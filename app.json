@@ -24,8 +24,9 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "25",
+      "buildNumber": "27",
       "supportsTablet": false,
+      "requireFullScreen": true,
       "entitlements": {
         "com.apple.developer.healthkit": true
       },
