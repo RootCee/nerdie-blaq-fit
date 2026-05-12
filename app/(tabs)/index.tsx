@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
@@ -18,6 +19,7 @@ import {
   initializeHealthKit,
 } from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 import { BodyWeightLogRecord } from "@/types/body-weight";
 
@@ -179,6 +181,7 @@ function shouldUseHealthWeightSample(profileWeight: string, entries: BodyWeightL
 
 export default function HomeScreen() {
   const { profile } = useOnboardingStore();
+  const { isPro } = useSubscription();
   const [bodyWeightEntries, setBodyWeightEntries] = useState<BodyWeightLogRecord[]>([]);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [isHealthAuthorized, setIsHealthAuthorized] = useState(false);
@@ -230,6 +233,21 @@ export default function HomeScreen() {
     let isMounted = true;
 
     async function hydrateHealthSyncStatus() {
+      if (!isPro) {
+        setIsHealthAuthorized(false);
+        setIsHealthLoading(false);
+        setHealthData({
+          steps: 0,
+          activeCalories: 0,
+          workoutsCompleted: 0,
+        });
+        setHealthError(null);
+        setHealthDebugReason(null);
+        setLastHealthWeightSample(null);
+        setLastSyncedAt(null);
+        return;
+      }
+
       try {
         const snapshot = await getHealthKitSyncSnapshot();
 
@@ -290,7 +308,7 @@ export default function HomeScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isPro]);
 
   const currentWeightPounds = useMemo(() => parseWeightInPounds(profile.weight), [profile.weight]);
   const goalWeightPounds = useMemo(() => parseWeightInPounds(profile.goalWeight), [profile.goalWeight]);
@@ -379,10 +397,15 @@ export default function HomeScreen() {
       setLastHealthWeightSample(snapshot.latestWeight);
       setLastSyncedAt(new Date().toISOString());
       setHealthError(null);
-    } catch {
-      setIsHealthAuthorized(false);
+    } catch (error) {
+      console.error("[HealthKit] Recalibrate failed after HealthKit initialization.", error);
+      setHealthData({
+        steps: 0,
+        activeCalories: 0,
+        workoutsCompleted: 0,
+      });
       setHealthDebugReason(getHealthKitDebugReason());
-      setHealthError("We couldn't connect to Apple Health right now.");
+      setHealthError(null);
     } finally {
       setIsHealthLoading(false);
     }
@@ -410,7 +433,8 @@ export default function HomeScreen() {
       } else {
         await handleRecalibrateHealthData({ suppressUnauthorizedError: true });
       }
-    } catch {
+    } catch (error) {
+      console.error("[HealthKit] Enable Health Sync failed.", error);
       setIsHealthAuthorized(false);
       setHealthDebugReason(getHealthKitDebugReason());
       setHealthError("We couldn't connect to Apple Health right now.");
@@ -492,62 +516,71 @@ export default function HomeScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title={isHealthAuthorized ? "Health Sync" : "Connect Apple Health"} eyebrow="Apple Health">
-        {!isHealthAuthorized ? (
-          <>
-            <Text style={styles.copy}>
-              Connect Apple Health to bring steps, activity, recovery, and body metrics into Nerdie Blaq Fit.
+      {isPro ? (
+        <SectionCard title={isHealthAuthorized ? "Health Sync" : "Connect Apple Health"} eyebrow="Apple Health">
+          {!isHealthAuthorized ? (
+            <>
+              <Text style={styles.copy}>
+                Connect Apple Health to bring steps, activity, recovery, and body metrics into Nerdie Blaq Fit.
+              </Text>
+              <PrimaryButton
+                label={isEnablingHealthSync ? "Connecting..." : "Enable Health Sync"}
+                onPress={() => void handleEnableHealthSync()}
+                disabled={isEnablingHealthSync || isHealthLoading}
+              />
+            </>
+          ) : (
+            <>
+              <View style={styles.healthStatsRow}>
+                <View style={styles.healthMetric}>
+                  <Text style={styles.progressLabel}>Steps Today</Text>
+                  <Text style={styles.healthValue}>{formatCompactNumber(healthData.steps)}</Text>
+                </View>
+                <View style={styles.healthMetric}>
+                  <Text style={styles.progressLabel}>Active Calories</Text>
+                  <Text style={styles.healthValue}>{formatCompactNumber(healthData.activeCalories)}</Text>
+                </View>
+                <View style={styles.healthMetric}>
+                  <Text style={styles.progressLabel}>Workouts Completed</Text>
+                  <Text style={styles.healthValue}>{healthData.workoutsCompleted}</Text>
+                </View>
+              </View>
+
+              <View style={styles.healthStatusRow}>
+                <Text style={styles.progressLabel}>Status</Text>
+                <View style={styles.healthStatusBadge}>
+                  <Text style={styles.healthStatusText}>{isHealthLoading ? "Refreshing..." : activityStatus}</Text>
+                </View>
+              </View>
+
+              <PrimaryButton
+                label={isHealthLoading ? "Recalibrating..." : "Recalibrate"}
+                onPress={() => void handleRecalibrateHealthData()}
+                variant="ghost"
+                disabled={isHealthLoading || isEnablingHealthSync}
+              />
+            </>
+          )}
+
+          {healthError ? <Text style={styles.progressError}>{healthError}</Text> : null}
+          {__DEV__ && healthDebugReason ? (
+            <Text style={styles.healthHelper}>Debug: {healthDebugReason}</Text>
+          ) : null}
+          {lastSyncedAt ? <Text style={styles.healthHelper}>Last synced: {formatLastSyncedLabel(lastSyncedAt)}</Text> : null}
+          {isHealthAuthorized && !healthError ? (
+            <Text style={styles.healthHelper}>
+              {isHealthLoading ? "Loading your Apple Health summary..." : "Apple Health data updates from the start of today through now."}
             </Text>
-            <PrimaryButton
-              label={isEnablingHealthSync ? "Connecting..." : "Enable Health Sync"}
-              onPress={() => void handleEnableHealthSync()}
-              disabled={isEnablingHealthSync || isHealthLoading}
-            />
-          </>
-        ) : (
-          <>
-            <View style={styles.healthStatsRow}>
-              <View style={styles.healthMetric}>
-                <Text style={styles.progressLabel}>Steps Today</Text>
-                <Text style={styles.healthValue}>{formatCompactNumber(healthData.steps)}</Text>
-              </View>
-              <View style={styles.healthMetric}>
-                <Text style={styles.progressLabel}>Active Calories</Text>
-                <Text style={styles.healthValue}>{formatCompactNumber(healthData.activeCalories)}</Text>
-              </View>
-              <View style={styles.healthMetric}>
-                <Text style={styles.progressLabel}>Workouts Completed</Text>
-                <Text style={styles.healthValue}>{healthData.workoutsCompleted}</Text>
-              </View>
-            </View>
-
-            <View style={styles.healthStatusRow}>
-              <Text style={styles.progressLabel}>Status</Text>
-              <View style={styles.healthStatusBadge}>
-                <Text style={styles.healthStatusText}>{isHealthLoading ? "Refreshing..." : activityStatus}</Text>
-              </View>
-            </View>
-
-            <PrimaryButton
-              label={isHealthLoading ? "Recalibrating..." : "Recalibrate"}
-              onPress={() => void handleRecalibrateHealthData()}
-              variant="ghost"
-              disabled={isHealthLoading || isEnablingHealthSync}
-            />
-          </>
-        )}
-
-        {healthError ? <Text style={styles.progressError}>{healthError}</Text> : null}
-        {__DEV__ && healthDebugReason ? (
-          <Text style={styles.healthHelper}>Debug: {healthDebugReason}</Text>
-        ) : null}
-        {lastSyncedAt ? <Text style={styles.healthHelper}>Last synced: {formatLastSyncedLabel(lastSyncedAt)}</Text> : null}
-        {isHealthAuthorized && !healthError ? (
-          <Text style={styles.healthHelper}>
-            {isHealthLoading ? "Loading your Apple Health summary..." : "Apple Health data updates from the start of today through now."}
-          </Text>
-        ) : null}
-      </SectionCard>
+          ) : null}
+        </SectionCard>
+      ) : (
+        <ProLockCard
+          title="Apple Health Sync"
+          eyebrow="Apple Health"
+          description="The free dashboard stays usable. Pro unlocks Apple Health steps, calories, workouts, and body metrics sync."
+          feature="Apple Health sync"
+        />
+      )}
     </Screen>
   );
 }

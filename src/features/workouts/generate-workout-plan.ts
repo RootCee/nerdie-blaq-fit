@@ -822,7 +822,15 @@ export function canGenerateWorkoutPlan(input: WorkoutPlannerInput): boolean {
   return Boolean(input.fitnessGoal && input.workoutExperience && input.workoutLocation && input.activityLevel);
 }
 
-export function generateWorkoutPlan(input: WorkoutPlannerInput, completedWorkoutCount = 0): WorkoutPlan | null {
+interface GenerateWorkoutPlanOptions {
+  enableBlaqMass?: boolean;
+}
+
+export function generateWorkoutPlan(
+  input: WorkoutPlannerInput,
+  completedWorkoutCount = 0,
+  options: GenerateWorkoutPlanOptions = {},
+): WorkoutPlan | null {
   if (!canGenerateWorkoutPlan(input)) {
     return null;
   }
@@ -833,7 +841,11 @@ export function generateWorkoutPlan(input: WorkoutPlannerInput, completedWorkout
   const activityLevel = input.activityLevel!;
   const equipment = input.availableEquipment;
   const goalPace = input.goalPace ?? "steady";
-  const useAdvancedBodybuildingSplit = goal === "muscle-gain" && experience === "advanced" && location === "gym";
+  const useAdvancedBodybuildingSplit =
+    options.enableBlaqMass === true &&
+    goal === "muscle-gain" &&
+    experience === "advanced" &&
+    location === "gym";
   const defaultTrainingDays = resolveTrainingDays(
     goal,
     experience,

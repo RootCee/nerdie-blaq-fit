@@ -3,6 +3,7 @@ import { ActivityIndicator, InteractionManager, Modal, Pressable, ScrollView, St
 import { router, useFocusEffect } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
@@ -16,6 +17,7 @@ import {
 } from "@/features/workouts/workout-plan-persistence";
 import { getOnboardingPersistenceConfig } from "@/lib/supabase";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 import { GroupedWorkoutExerciseDisplay, WorkoutDay, WorkoutDayLog, WorkoutPlan } from "@/types/workout";
 
@@ -63,6 +65,9 @@ function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
 function shouldReplaceSavedPlan(savedPlan: WorkoutPlan, generatedPlan: WorkoutPlan) {
   return (
     savedPlan.version !== generatedPlan.version ||
+    savedPlan.title !== generatedPlan.title ||
+    savedPlan.trainingDays !== generatedPlan.trainingDays ||
+    savedPlan.programLengthWeeks !== generatedPlan.programLengthWeeks ||
     savedPlan.weekIndex !== generatedPlan.weekIndex ||
     savedPlan.advancedIntensityPhase !== generatedPlan.advancedIntensityPhase
   );
@@ -163,8 +168,13 @@ function buildProgramCalendar(plan: WorkoutPlan, dayLogs: Record<string, Workout
 
 export default function WorkoutScreen() {
   const { profile, isComplete } = useOnboardingStore();
+  const { isPro } = useSubscription();
   const [completedWorkoutCount, setCompletedWorkoutCount] = useState(0);
-  const generatedPlan = useMemo(() => generateWorkoutPlan(profile, completedWorkoutCount), [completedWorkoutCount, profile]);
+  const wantsBlaqMass = profile.fitnessGoal === "muscle-gain" && profile.workoutExperience === "advanced" && profile.workoutLocation === "gym";
+  const generatedPlan = useMemo(
+    () => generateWorkoutPlan(profile, completedWorkoutCount, { enableBlaqMass: isPro }),
+    [completedWorkoutCount, isPro, profile],
+  );
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [dayLogs, setDayLogs] = useState<Record<string, WorkoutDayLog>>({});
   const [selectedProgramDay, setSelectedProgramDay] = useState(0);
@@ -499,13 +509,31 @@ export default function WorkoutScreen() {
             onPress={() => void handleRegeneratePlan()}
             variant="ghost"
           />
-          <PrimaryButton
-            label="View Full Program Calendar"
-            onPress={() => setIsCalendarOpen(true)}
-            variant="ghost"
-          />
+          {isPro ? (
+            <PrimaryButton
+              label="View Full Program Calendar"
+              onPress={() => setIsCalendarOpen(true)}
+              variant="ghost"
+            />
+          ) : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </SectionCard>
+
+        {!isPro && wantsBlaqMass ? (
+          <ProLockCard
+            title="Blaq Mass System v1"
+            description="Your free plan stays active, but the high-volume Blaq Mass advanced muscle-building protocol is a Pro feature."
+            feature="Blaq Mass System v1"
+          />
+        ) : null}
+
+        {!isPro ? (
+          <ProLockCard
+            title="Advanced Program Calendar"
+            description="Weekly tracking stays free. Upgrade to Pro to see the full multi-week program calendar."
+            feature="advanced calendar"
+          />
+        ) : null}
 
         <SectionCard title={currentWeekLabel} eyebrow="Weekly tracker">
           <View style={styles.weekTrackerRow}>

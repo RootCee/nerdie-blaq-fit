@@ -24,7 +24,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "23",
+      "buildNumber": "25",
       "supportsTablet": false,
       "entitlements": {
         "com.apple.developer.healthkit": true
@@ -48,6 +48,10 @@
       "bundler": "metro"
     },
     "extra": {
+      "revenueCat": {
+        "entitlementId": "pro",
+        "productId": "nerdie_blaq_fit_pro_monthly"
+      },
       "router": {},
       "eas": {
         "projectId": "e8de17c7-a488-4178-a10d-e25eabaeb78c"

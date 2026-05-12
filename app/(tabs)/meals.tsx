@@ -1,11 +1,13 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { generateMealPlan } from "@/features/nutrition/generate-meal-plan";
 import { generateNutritionGuidance } from "@/features/nutrition/generate-nutrition-guidance";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useSubscription } from "@/store/subscription-store";
 import { GroceryList } from "@/types/meal-plan";
 import { colors, spacing } from "@/theme";
 
@@ -25,6 +27,7 @@ const SLOT_LABELS: Record<string, string> = {
 
 export default function MealsScreen() {
   const { profile, isComplete } = useOnboardingStore();
+  const { isPro } = useSubscription();
   const guidance = generateNutritionGuidance(profile);
 
   if (!isComplete || !guidance) {
@@ -73,64 +76,74 @@ export default function MealsScreen() {
         ))}
       </SectionCard>
 
-      <SectionCard title="Meal prep guide" eyebrow="Concrete meals for your preference">
-        {mealPlan.meals.map((meal) => (
-          <View key={meal.slot} style={styles.prepCard}>
-            <View style={styles.prepHeader}>
-              <Text style={styles.prepSlot}>{SLOT_LABELS[meal.slot]}</Text>
-              <Text style={styles.prepCalories}>{meal.estimatedCalories} cal</Text>
-            </View>
-            <Text style={styles.prepTitle}>{meal.title}</Text>
-            <Text style={styles.prepDesc}>{meal.description}</Text>
-            {meal.ingredients.map((ingredient) => (
-              <Text key={ingredient.name} style={styles.listItem}>
-                • {ingredient.name} — {ingredient.amount}
-              </Text>
+      {isPro ? (
+        <>
+          <SectionCard title="Meal prep guide" eyebrow="Concrete meals for your preference">
+            {mealPlan.meals.map((meal) => (
+              <View key={meal.slot} style={styles.prepCard}>
+                <View style={styles.prepHeader}>
+                  <Text style={styles.prepSlot}>{SLOT_LABELS[meal.slot]}</Text>
+                  <Text style={styles.prepCalories}>{meal.estimatedCalories} cal</Text>
+                </View>
+                <Text style={styles.prepTitle}>{meal.title}</Text>
+                <Text style={styles.prepDesc}>{meal.description}</Text>
+                {meal.ingredients.map((ingredient) => (
+                  <Text key={ingredient.name} style={styles.listItem}>
+                    • {ingredient.name} — {ingredient.amount}
+                  </Text>
+                ))}
+                <Text style={styles.portionHint}>{meal.portionGuidance}</Text>
+                {meal.substitutions?.length ? (
+                  <View style={styles.substitutionsBlock}>
+                    <Text style={styles.substitutionsTitle}>Easy swaps</Text>
+                    {meal.substitutions.map((swap) => (
+                      <Text key={`${meal.slot}-${swap.type}`} style={styles.listItem}>
+                        • {swap.title}: {swap.detail}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
             ))}
-            <Text style={styles.portionHint}>{meal.portionGuidance}</Text>
-            {meal.substitutions?.length ? (
-              <View style={styles.substitutionsBlock}>
-                <Text style={styles.substitutionsTitle}>Easy swaps</Text>
-                {meal.substitutions.map((swap) => (
-                  <Text key={`${meal.slot}-${swap.type}`} style={styles.listItem}>
-                    • {swap.title}: {swap.detail}
+          </SectionCard>
+
+          <SectionCard title="Grocery list" eyebrow="Stock up for the week">
+            {GROCERY_CATEGORIES.map(({ key, label }) => {
+              const items = mealPlan.groceryList[key];
+              if (items.length === 0) return null;
+              return (
+                <View key={key} style={styles.groceryCategory}>
+                  <Text style={styles.groceryCategoryLabel}>{label}</Text>
+                  {items.map((item) => (
+                    <Text key={item.name} style={styles.listItem}>
+                      • {item.name} — {item.amount}
+                    </Text>
+                  ))}
+                </View>
+              );
+            })}
+          </SectionCard>
+
+          <SectionCard title="Supplement ideas" eyebrow="Optional support">
+            {guidance.supplementSuggestions.map((group) => (
+              <View key={group.category} style={styles.mealBlock}>
+                <Text style={styles.mealTitle}>{group.category}</Text>
+                {group.suggestions.map((suggestion) => (
+                  <Text key={`${group.category}-${suggestion}`} style={styles.listItem}>
+                    • {suggestion}
                   </Text>
                 ))}
               </View>
-            ) : null}
-          </View>
-        ))}
-      </SectionCard>
-
-      <SectionCard title="Grocery list" eyebrow="Stock up for the week">
-        {GROCERY_CATEGORIES.map(({ key, label }) => {
-          const items = mealPlan.groceryList[key];
-          if (items.length === 0) return null;
-          return (
-            <View key={key} style={styles.groceryCategory}>
-              <Text style={styles.groceryCategoryLabel}>{label}</Text>
-              {items.map((item) => (
-                <Text key={item.name} style={styles.listItem}>
-                  • {item.name} — {item.amount}
-                </Text>
-              ))}
-            </View>
-          );
-        })}
-      </SectionCard>
-
-      <SectionCard title="Supplement ideas" eyebrow="Optional support">
-        {guidance.supplementSuggestions.map((group) => (
-          <View key={group.category} style={styles.mealBlock}>
-            <Text style={styles.mealTitle}>{group.category}</Text>
-            {group.suggestions.map((suggestion) => (
-              <Text key={`${group.category}-${suggestion}`} style={styles.listItem}>
-                • {suggestion}
-              </Text>
             ))}
-          </View>
-        ))}
-      </SectionCard>
+          </SectionCard>
+        </>
+      ) : (
+        <ProLockCard
+          title="Advanced Nutrition"
+          description="Daily calorie and macro targets stay free. Pro unlocks meal prep guides, grocery lists, swaps, and supplement ideas."
+          feature="advanced nutrition features"
+        />
+      )}
 
       <SectionCard title="Built from your profile" eyebrow="Your source data">
         <Text style={styles.copy}>

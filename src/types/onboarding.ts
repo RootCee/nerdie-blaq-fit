@@ -81,6 +81,7 @@ export interface SupabaseProfileRow {
   dietary_preference: DietaryPreference | null;
   injuries_or_limitations: string | null;
   onboarding_completed: boolean;
+  is_premium_override?: boolean | null;
   created_at: string;
   updated_at: string;
 }

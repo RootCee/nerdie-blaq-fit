@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { handleAuthCallbackUrl } from "@/lib/social-auth";
 import { OnboardingStoreProvider } from "@/store/onboarding-store";
+import { SubscriptionProvider } from "@/store/subscription-store";
 import { appTheme } from "@/theme";
 
 export default function RootLayout() {
@@ -29,18 +30,21 @@ export default function RootLayout() {
 
   return (
     <OnboardingStoreProvider>
-      <ThemeProvider value={appTheme}>
-        <StatusBar style="light" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="onboarding" />
-          <Stack.Screen name="learn/[slug]" />
-          <Stack.Screen name="exercise/[slug]" />
-          <Stack.Screen name="workout-history/[dayId]" />
-          <Stack.Screen name="workout-session/[dayId]" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-      </ThemeProvider>
+      <SubscriptionProvider>
+        <ThemeProvider value={appTheme}>
+          <StatusBar style="light" />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="onboarding" />
+            <Stack.Screen name="paywall" />
+            <Stack.Screen name="learn/[slug]" />
+            <Stack.Screen name="exercise/[slug]" />
+            <Stack.Screen name="workout-history/[dayId]" />
+            <Stack.Screen name="workout-session/[dayId]" />
+            <Stack.Screen name="(tabs)" />
+          </Stack>
+        </ThemeProvider>
+      </SubscriptionProvider>
     </OnboardingStoreProvider>
   );
 }

@@ -14,6 +14,7 @@ import {
 } from "@/lib/social-auth";
 import { supabase } from "@/lib/supabase";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 
 function formatProvider(provider: string | null): string {
@@ -23,6 +24,7 @@ function formatProvider(provider: string | null): string {
 
 export default function ProfileScreen() {
   const { isComplete, profile, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
+  const { isPro, isPremiumOverride, status: subscriptionStatus, refreshSubscription } = useSubscription();
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [isLinking, setIsLinking] = useState<"apple" | "google" | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
@@ -160,6 +162,23 @@ export default function ProfileScreen() {
           </Text>
         </SectionCard>
       )}
+
+      <SectionCard title="Pro access" eyebrow={isPro ? "Active" : "Free"}>
+        <Text style={styles.copy}>
+          {isPremiumOverride
+            ? "Tester premium override is active for this account."
+            : isPro
+              ? "Your Pro subscription is active."
+              : "Basic workout, meal targets, progress, learning, and profile flows remain free."}
+        </Text>
+        <Text style={styles.item}>RevenueCat status: {subscriptionStatus}</Text>
+        <View style={styles.buttonGroup}>
+          {!isPro ? (
+            <PrimaryButton label="View Pro" onPress={() => router.push("/paywall" as never)} />
+          ) : null}
+          <PrimaryButton label="Refresh Pro status" onPress={() => void refreshSubscription()} variant="ghost" />
+        </View>
+      </SectionCard>
 
       <PrimaryButton
         label="Reset onboarding"
