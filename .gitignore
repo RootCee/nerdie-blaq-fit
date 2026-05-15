@@ -1,6 +1,7 @@
 node_modules
 .expo
 .expo-shared
+supabase/.temp
 dist
 web-build
 .env

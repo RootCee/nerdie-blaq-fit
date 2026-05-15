@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { deleteCurrentAccount } from "@/lib/account-deletion";
 import { mapProfileToSupabaseRow } from "@/lib/onboarding-persistence";
 import {
   getSessionStatus,
@@ -23,11 +24,14 @@ function formatProvider(provider: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { isComplete, profile, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
+  const { isComplete, profile, clearProfileState, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
   const { isPro, isPremiumOverride, status: subscriptionStatus, refreshSubscription } = useSubscription();
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [isLinking, setIsLinking] = useState<"apple" | "google" | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     const status = await getSessionStatus();
@@ -100,7 +104,30 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
+
+    try {
+      await deleteCurrentAccount();
+      await supabase?.auth.signOut().catch(() => undefined);
+      clearProfileState();
+      setIsDeleteModalOpen(false);
+      await refreshSubscription();
+      router.replace("/onboarding");
+    } catch (deleteError) {
+      setDeleteAccountError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Account deletion did not complete. Please try again.",
+      );
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
   return (
+    <>
     <Screen title="Profile" subtitle="Your saved profile and account settings.">
       <SectionCard
         title="Profile snapshot"
@@ -185,7 +212,61 @@ export default function ProfileScreen() {
         onPress={() => void handleReset()}
         variant="ghost"
       />
+
+      <SectionCard title="Delete Account" eyebrow="Permanent">
+        <Text style={styles.copy}>
+          Delete your Nerdie Blaq Fit account and app data, including your profile, workout plan, workout logs, and body weight logs. This cannot be undone.
+        </Text>
+        {deleteAccountError ? <Text style={styles.error}>{deleteAccountError}</Text> : null}
+        <PrimaryButton
+          label={isDeletingAccount ? "Deleting account..." : "Delete Account"}
+          onPress={() => setIsDeleteModalOpen(true)}
+          disabled={isDeletingAccount}
+          variant="ghost"
+        />
+      </SectionCard>
     </Screen>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isDeleteModalOpen}
+        onRequestClose={() => {
+          if (!isDeletingAccount) {
+            setIsDeleteModalOpen(false);
+          }
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Delete account?</Text>
+            <Text style={styles.copy}>
+              This permanently deletes your account and app data from Nerdie Blaq Fit, including profile details, workout plans, workout logs, and progress data.
+            </Text>
+            {deleteAccountError ? <Text style={styles.error}>{deleteAccountError}</Text> : null}
+            <View style={styles.buttonGroup}>
+              <PrimaryButton
+                label={isDeletingAccount ? "Deleting..." : "Yes, Delete My Account"}
+                onPress={() => void handleDeleteAccount()}
+                disabled={isDeletingAccount}
+              />
+              <PrimaryButton
+                label="Cancel"
+                onPress={() => setIsDeleteModalOpen(false)}
+                disabled={isDeletingAccount}
+                variant="ghost"
+              />
+            </View>
+            {isDeletingAccount ? (
+              <View style={styles.deletingRow}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.copy}>Deleting your account and signing you out.</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -213,5 +294,33 @@ const styles = StyleSheet.create({
   },
   socialButton: {
     minHeight: 52,
+  },
+  modalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.72)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: spacing.md,
+    maxWidth: 420,
+    padding: spacing.lg,
+    width: "100%",
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 28,
+  },
+  deletingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
   },
 });

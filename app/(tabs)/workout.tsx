@@ -429,6 +429,13 @@ export default function WorkoutScreen() {
     setSelectedProgramDay(Math.min(Math.max((plan.currentProgramDay ?? 1) - 1, 0), 6));
   }, [plan?.planStartDate, plan?.version, plan?.currentProgramDay]);
 
+  const openPaywall = useCallback((feature: string) => {
+    router.push({
+      pathname: "/paywall" as never,
+      params: { feature } as never,
+    } as never);
+  }, []);
+
   if (!isComplete || !scheduledGeneratedPlan) {
     return (
       <Screen title="Workout" subtitle="Your weekly training plan shows up here once your setup is complete.">
@@ -509,13 +516,18 @@ export default function WorkoutScreen() {
             onPress={() => void handleRegeneratePlan()}
             variant="ghost"
           />
-          {isPro ? (
-            <PrimaryButton
-              label="View Full Program Calendar"
-              onPress={() => setIsCalendarOpen(true)}
-              variant="ghost"
-            />
-          ) : null}
+          <PrimaryButton
+            label="View Full Program Calendar"
+            onPress={() => {
+              if (isPro) {
+                setIsCalendarOpen(true);
+                return;
+              }
+
+              openPaywall("full program calendar");
+            }}
+            variant="ghost"
+          />
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </SectionCard>
 
@@ -540,18 +552,25 @@ export default function WorkoutScreen() {
             {weekSlots.map((slot) => {
               const isSelected = selectedSlot?.index === slot.index;
               const isToday = todayProgramIndex === slot.index;
+              const isLocked = !isPro && !isToday;
               const cardStyles = [
                 styles.weekDayCard,
                 slot.isRestDay ? styles.restDayCard : null,
                 slot.completed ? styles.completedDayCard : null,
                 isToday ? styles.todayDayCard : null,
                 isSelected ? styles.selectedDayCard : null,
+                isLocked ? styles.lockedDayCard : null,
               ];
 
               return (
                 <Pressable
                   key={`${slot.label}-${slot.index}`}
                   onPress={() => {
+                    if (isLocked) {
+                      openPaywall("weekly workout days");
+                      return;
+                    }
+
                     setSelectedProgramDay(slot.index);
                     setIsDayDetailOpen(true);
                   }}
@@ -563,7 +582,7 @@ export default function WorkoutScreen() {
                     {slot.workoutDay ? trimProgramDayTitle(slot.workoutDay.title) : "Rest / Recovery Day"}
                   </Text>
                   <Text style={styles.weekDayStatus}>
-                    {slot.isRestDay ? "Rest Day" : slot.completed ? "Done" : isToday ? "Today" : "Not Done"}
+                    {isLocked ? "Locked" : slot.isRestDay ? "Rest Day" : slot.completed ? "Done" : isToday ? "Today" : "Not Done"}
                   </Text>
                 </Pressable>
               );
@@ -827,6 +846,10 @@ const styles = StyleSheet.create({
   },
   futureDayCard: {
     opacity: 0.72,
+  },
+  lockedDayCard: {
+    opacity: 0.64,
+    borderColor: colors.danger,
   },
   weekDayLabel: {
     color: colors.primarySoft,

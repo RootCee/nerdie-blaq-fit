@@ -147,32 +147,44 @@ function checkAvailability() {
       return;
     }
 
-    AppleHealthKit.isAvailable((error, results) => {
-      if (error) {
-        const reason = `AppleHealthKit.isAvailable error: ${stringifyHealthKitError(error)}`;
-        setHealthKitDebugReason(reason);
-        console.error("[HealthKit] isAvailable failed.", {
+    try {
+      AppleHealthKit.isAvailable((error, results) => {
+        if (error) {
+          const reason = `AppleHealthKit.isAvailable error: ${stringifyHealthKitError(error)}`;
+          setHealthKitDebugReason(reason);
+          console.error("[HealthKit] isAvailable failed.", {
+            platform: Platform.OS,
+            error: formatHealthKitError(error),
+            reason,
+            permissions: getPermissionDebugList(),
+          });
+        }
+
+        if (!error) {
+          setHealthKitDebugReason(
+            results ? null : "AppleHealthKit.isAvailable returned false because iOS reported Health data is not available on this device/runtime.",
+          );
+        }
+
+        console.log("[HealthKit] Availability result.", {
           platform: Platform.OS,
-          error: formatHealthKitError(error),
-          reason,
+          available: Boolean(results),
+          rawResult: results,
           permissions: getPermissionDebugList(),
         });
-      }
-
-      if (!error) {
-        setHealthKitDebugReason(
-          results ? null : "AppleHealthKit.isAvailable returned false because iOS reported Health data is not available on this device/runtime.",
-        );
-      }
-
-      console.log("[HealthKit] Availability result.", {
+        resolve(Boolean(results));
+      });
+    } catch (error) {
+      const reason = `AppleHealthKit.isAvailable threw: ${stringifyHealthKitError(error)}`;
+      setHealthKitDebugReason(reason);
+      console.error("[HealthKit] isAvailable threw.", {
         platform: Platform.OS,
-        available: Boolean(results),
-        rawResult: results,
+        error: formatHealthKitError(error),
+        reason,
         permissions: getPermissionDebugList(),
       });
-      resolve(Boolean(results));
-    });
+      resolve(false);
+    }
   });
 }
 
@@ -187,27 +199,39 @@ function getAuthStatus() {
       return;
     }
 
-    AppleHealthKit.getAuthStatus(HEALTHKIT_PERMISSIONS, (error, results) => {
-      if (error) {
-        const reason = `AppleHealthKit.getAuthStatus error: ${stringifyHealthKitError(error)}`;
-        setHealthKitDebugReason(reason);
-        console.error("[HealthKit] getAuthStatus failed.", {
+    try {
+      AppleHealthKit.getAuthStatus(HEALTHKIT_PERMISSIONS, (error, results) => {
+        if (error) {
+          const reason = `AppleHealthKit.getAuthStatus error: ${stringifyHealthKitError(error)}`;
+          setHealthKitDebugReason(reason);
+          console.error("[HealthKit] getAuthStatus failed.", {
+            platform: Platform.OS,
+            error: formatHealthKitError(error),
+            reason,
+            permissions: getPermissionDebugList(),
+          });
+          resolve(null);
+          return;
+        }
+
+        console.log("[HealthKit] getAuthStatus result.", {
           platform: Platform.OS,
-          error: formatHealthKitError(error),
-          reason,
+          status: results,
           permissions: getPermissionDebugList(),
         });
-        resolve(null);
-        return;
-      }
-
-      console.log("[HealthKit] getAuthStatus result.", {
+        resolve(results);
+      });
+    } catch (error) {
+      const reason = `AppleHealthKit.getAuthStatus threw: ${stringifyHealthKitError(error)}`;
+      setHealthKitDebugReason(reason);
+      console.error("[HealthKit] getAuthStatus threw.", {
         platform: Platform.OS,
-        status: results,
+        error: formatHealthKitError(error),
+        reason,
         permissions: getPermissionDebugList(),
       });
-      resolve(results);
-    });
+      resolve(null);
+    }
   });
 }
 
@@ -226,86 +250,81 @@ function initHealthKit() {
       permissions: getPermissionDebugList(),
     });
 
-    AppleHealthKit.initHealthKit(HEALTHKIT_PERMISSIONS, async (error) => {
-      const isAuthorized = !error;
+    try {
+      AppleHealthKit.initHealthKit(HEALTHKIT_PERMISSIONS, async (error) => {
+        const isAuthorized = !error;
 
-      if (error) {
-        const reason = `AppleHealthKit.initHealthKit error: ${stringifyHealthKitError(error)}`;
-        setHealthKitDebugReason(reason);
-        console.error("[HealthKit] initHealthKit failed.", {
-          platform: Platform.OS,
-          error: formatHealthKitError(error),
-          reason,
-          permissions: getPermissionDebugList(),
-        });
-      } else {
-        setHealthKitDebugReason(null);
-        console.log("[HealthKit] initHealthKit success.", {
-          platform: Platform.OS,
-          permissions: getPermissionDebugList(),
-        });
-      }
+        if (error) {
+          const reason = `AppleHealthKit.initHealthKit error: ${stringifyHealthKitError(error)}`;
+          setHealthKitDebugReason(reason);
+          console.error("[HealthKit] initHealthKit failed.", {
+            platform: Platform.OS,
+            error: formatHealthKitError(error),
+            reason,
+            permissions: getPermissionDebugList(),
+          });
+        } else {
+          setHealthKitDebugReason(null);
+          console.log("[HealthKit] initHealthKit success.", {
+            platform: Platform.OS,
+            permissions: getPermissionDebugList(),
+          });
+        }
 
-      await setStoredAuthorization(isAuthorized);
-      resolve(isAuthorized);
-    });
+        await setStoredAuthorization(isAuthorized);
+        resolve(isAuthorized);
+      });
+    } catch (error) {
+      const reason = `AppleHealthKit.initHealthKit threw: ${stringifyHealthKitError(error)}`;
+      setHealthKitDebugReason(reason);
+      console.error("[HealthKit] initHealthKit threw.", {
+        platform: Platform.OS,
+        error: formatHealthKitError(error),
+        reason,
+        permissions: getPermissionDebugList(),
+      });
+      void setStoredAuthorization(false);
+      resolve(false);
+    }
   });
 }
 
 function getStepCount(options: HealthInputOptions) {
   return new Promise<number>((resolve) => {
-    AppleHealthKit.getStepCount(options, (error, results) => {
-      if (error || typeof results?.value !== "number") {
-        console.log("[HealthKit] getStepCount result.", {
-          value: 0,
-          error: error ? formatHealthKitError(error) : null,
-          rawResult: results,
-        });
-        resolve(0);
-        return;
-      }
+    try {
+      AppleHealthKit.getStepCount(options, (error, results) => {
+        if (error || typeof results?.value !== "number") {
+          console.log("[HealthKit] getStepCount result.", {
+            value: 0,
+            error: error ? formatHealthKitError(error) : null,
+            rawResult: results,
+          });
+          resolve(0);
+          return;
+        }
 
-      console.log("[HealthKit] getStepCount result.", {
-        value: Math.round(results.value),
-        error: null,
+        console.log("[HealthKit] getStepCount result.", {
+          value: Math.round(results.value),
+          error: null,
+        });
+        resolve(Math.round(results.value));
       });
-      resolve(Math.round(results.value));
-    });
+    } catch (error) {
+      console.log("[HealthKit] getStepCount threw.", {
+        value: 0,
+        error: formatHealthKitError(error),
+      });
+      resolve(0);
+    }
   });
 }
 
 function getActiveEnergySamples(options: HealthInputOptions) {
   return new Promise<HealthValue[]>((resolve) => {
-    AppleHealthKit.getActiveEnergyBurned(options, (error, results) => {
-      if (error || !Array.isArray(results)) {
-        console.log("[HealthKit] getActiveEnergyBurned result.", {
-          sampleCount: 0,
-          error: error ? formatHealthKitError(error) : null,
-          rawResult: results,
-        });
-        resolve([]);
-        return;
-      }
-
-      console.log("[HealthKit] getActiveEnergyBurned result.", {
-        sampleCount: results.length,
-        error: null,
-      });
-      resolve(results);
-    });
-  });
-}
-
-function getWorkoutSamples(options: HealthInputOptions) {
-  return new Promise<HKWorkoutQueriedSampleType[]>((resolve) => {
-    AppleHealthKit.getSamples(
-      {
-        ...options,
-        type: HealthObserver.Workout,
-      },
-      (error, results) => {
+    try {
+      AppleHealthKit.getActiveEnergyBurned(options, (error, results) => {
         if (error || !Array.isArray(results)) {
-          console.log("[HealthKit] getWorkoutSamples result.", {
+          console.log("[HealthKit] getActiveEnergyBurned result.", {
             sampleCount: 0,
             error: error ? formatHealthKitError(error) : null,
             rawResult: results,
@@ -314,13 +333,55 @@ function getWorkoutSamples(options: HealthInputOptions) {
           return;
         }
 
-        console.log("[HealthKit] getWorkoutSamples result.", {
+        console.log("[HealthKit] getActiveEnergyBurned result.", {
           sampleCount: results.length,
           error: null,
         });
-        resolve(results as unknown as HKWorkoutQueriedSampleType[]);
-      },
-    );
+        resolve(results);
+      });
+    } catch (error) {
+      console.log("[HealthKit] getActiveEnergyBurned threw.", {
+        sampleCount: 0,
+        error: formatHealthKitError(error),
+      });
+      resolve([]);
+    }
+  });
+}
+
+function getWorkoutSamples(options: HealthInputOptions) {
+  return new Promise<HKWorkoutQueriedSampleType[]>((resolve) => {
+    try {
+      AppleHealthKit.getSamples(
+        {
+          ...options,
+          type: HealthObserver.Workout,
+        },
+        (error, results) => {
+          if (error || !Array.isArray(results)) {
+            console.log("[HealthKit] getWorkoutSamples result.", {
+              sampleCount: 0,
+              error: error ? formatHealthKitError(error) : null,
+              rawResult: results,
+            });
+            resolve([]);
+            return;
+          }
+
+          console.log("[HealthKit] getWorkoutSamples result.", {
+            sampleCount: results.length,
+            error: null,
+          });
+          resolve(results as unknown as HKWorkoutQueriedSampleType[]);
+        },
+      );
+    } catch (error) {
+      console.log("[HealthKit] getWorkoutSamples threw.", {
+        sampleCount: 0,
+        error: formatHealthKitError(error),
+      });
+      resolve([]);
+    }
   });
 }
 
@@ -344,27 +405,43 @@ export interface HealthKitSyncSnapshot {
 
 function getLatestWeightSample() {
   return new Promise<HealthKitWeightSample | null>((resolve) => {
-    AppleHealthKit.getLatestWeight({ unit: HealthUnit.pound }, (error, results) => {
-      if (error) {
-        console.error("[HealthKit] getLatestWeight failed.", {
-          platform: Platform.OS,
-          error: formatHealthKitError(error),
+    try {
+      AppleHealthKit.getLatestWeight({ unit: HealthUnit.pound }, (error, results) => {
+        if (error) {
+          console.error("[HealthKit] getLatestWeight failed.", {
+            platform: Platform.OS,
+            error: formatHealthKitError(error),
+          });
+          resolve(null);
+          return;
+        }
+
+        if (!results || typeof results.value !== "number") {
+          console.log("[HealthKit] getLatestWeight result.", {
+            value: null,
+            rawResult: results,
+          });
+          resolve(null);
+          return;
+        }
+
+        console.log("[HealthKit] getLatestWeight result.", {
+          value: Number(results.value.toFixed(1)),
+          error: null,
         });
-        resolve(null);
-        return;
-      }
-
-      if (!results || typeof results.value !== "number") {
-        resolve(null);
-        return;
-      }
-
-      resolve({
-        value: Number(results.value.toFixed(1)),
-        startDate: results.startDate,
-        endDate: results.endDate,
+        resolve({
+          value: Number(results.value.toFixed(1)),
+          startDate: results.startDate,
+          endDate: results.endDate,
+        });
       });
-    });
+    } catch (error) {
+      console.log("[HealthKit] getLatestWeight threw.", {
+        value: null,
+        error: formatHealthKitError(error),
+      });
+      resolve(null);
+    }
   });
 }
 

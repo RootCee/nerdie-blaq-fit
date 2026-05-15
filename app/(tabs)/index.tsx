@@ -41,6 +41,9 @@ const DAILY_FOCUS_QUOTES = [
   "The goal is not hype. The goal is proof.",
 ];
 
+const APPLE_HEALTH_DISCLOSURE =
+  "Nerdie Blaq Fit can read steps, active energy, workouts, resting heart rate, and body weight when you grant permission. This data is used only to personalize progress, recovery, and fitness tracking.";
+
 function clamp(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
 }
@@ -517,7 +520,8 @@ export default function HomeScreen() {
       </SectionCard>
 
       {isPro ? (
-        <SectionCard title={isHealthAuthorized ? "Health Sync" : "Connect Apple Health"} eyebrow="Apple Health">
+        <SectionCard title="Apple Health Integration" eyebrow={isHealthAuthorized ? "Health Sync" : "Apple Health"}>
+          <Text style={styles.copy}>{APPLE_HEALTH_DISCLOSURE}</Text>
           {!isHealthAuthorized ? (
             <>
               <Text style={styles.copy}>
@@ -575,9 +579,9 @@ export default function HomeScreen() {
         </SectionCard>
       ) : (
         <ProLockCard
-          title="Apple Health Sync"
+          title="Apple Health Integration"
           eyebrow="Apple Health"
-          description="The free dashboard stays usable. Pro unlocks Apple Health steps, calories, workouts, and body metrics sync."
+          description={APPLE_HEALTH_DISCLOSURE}
           feature="Apple Health sync"
         />
       )}

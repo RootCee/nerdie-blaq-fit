@@ -89,6 +89,7 @@ create table if not exists public.profiles (
   dietary_preference text,
   injuries_or_limitations text,
   onboarding_completed boolean not null default false,
+  is_premium_override boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -134,6 +135,14 @@ for update
 to authenticated
 using (auth.uid() = id)
 with check (auth.uid() = id);
+```
+
+Admin/service-role tester override:
+
+```sql
+update public.profiles
+set is_premium_override = true
+where id = '00000000-0000-0000-0000-000000000000';
 ```
 
 ### 2. Active Workout Plan Snapshot
@@ -360,6 +369,22 @@ src/
 - TODO auth upgrades can later add email, Apple, and Google account linking
 - workout plans are stored as JSON snapshots for MVP speed and simplicity
 - workout day logs are stored per user and per day id
+- deploy `supabase/functions/delete-account` as the `delete-account` Edge Function so the in-app delete flow can remove the Supabase Auth user with the service role
+
+## App Review Notes
+
+- Terms of Use and Privacy Policy links are on `app/paywall.tsx` in the Pro subscription paywall, below Product ID and above the legal agreement text. They open `https://nerdieblaq.xyz/terms` and `https://nerdieblaq.xyz/privacy` with `Linking.openURL`.
+- Delete Account is on the Profile tab in the `Delete Account` section. Tapping it opens a confirmation modal, then calls the `delete-account` Supabase Edge Function, signs the user out, clears local profile state, and returns to onboarding.
+- Apple Health disclosure is on the Home tab in the `Apple Health Integration` section near the Health Sync controls. It is also shown in the locked Apple Health card for Free users.
+- Pro access can be tested with either an active RevenueCat Pro entitlement or by setting `public.profiles.is_premium_override = true` for the reviewer/test user. Pro users can open all weekly workout days and the full program calendar. Free users can open only the current day workout; future/non-current workout days show locked state and route to the paywall.
+
+### App Review Screen Recording Steps
+
+1. Open the app, finish onboarding, then open the Home tab. Scroll to `Apple Health Integration` and show the Apple Health disclosure before tapping `Enable Health Sync`.
+2. Open the Session tab as a Free user. Tap today's workout card to show it opens, then tap a future or non-current workout day to show the locked state routes to the Pro paywall.
+3. On the paywall, show the product title, $9.99/month price, 3-day free trial, Restore Purchases button, Product ID, Terms of Use link, and Privacy Policy link.
+4. Return to the Profile tab. Scroll to `Delete Account`, tap `Delete Account`, show the permanent-deletion confirmation modal, then confirm to show the app signs out and returns to onboarding.
+5. For Pro testing, enable `is_premium_override` or use a RevenueCat Pro test subscription, tap `Refresh Pro status` on Profile, then show all workout days and `View Full Program Calendar` open without the paywall.
 
 ## Next Recommended Work
 

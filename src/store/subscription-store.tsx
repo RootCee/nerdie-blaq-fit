@@ -4,6 +4,7 @@ import Purchases, {
   CustomerInfo,
   LOG_LEVEL,
   PurchasesOffering,
+  PurchasesOfferings,
   PurchasesPackage,
 } from "react-native-purchases";
 
@@ -33,6 +34,8 @@ interface SubscriptionStoreValue {
 
 const SubscriptionStoreContext = createContext<SubscriptionStoreValue | null>(null);
 
+const CONFIGURING_SUBSCRIPTION_MESSAGE = "Subscription is being configured. Please try again soon.";
+
 let hasConfiguredPurchases = false;
 
 function canUseRevenueCat() {
@@ -51,6 +54,32 @@ function findProPackage(offering: PurchasesOffering | null) {
     offering?.monthly ??
     offering?.availablePackages[0] ??
     null
+  );
+}
+
+function logRevenueCatOfferings(offerings: PurchasesOfferings) {
+  if (!__DEV__) {
+    return;
+  }
+
+  const offeringEntries = Object.values(offerings.all);
+  const availablePackages = offeringEntries.flatMap((entry) => entry.availablePackages);
+
+  console.log("[subscription] RevenueCat offerings returned", {
+    offeringIdentifiers: offeringEntries.map((entry) => entry.identifier),
+    offeringCount: offeringEntries.length,
+  });
+  console.log("[subscription] RevenueCat current offering identifier", offerings.current?.identifier ?? null);
+  console.log(
+    "[subscription] RevenueCat available packages",
+    availablePackages.map((entry) => ({
+      offeringIdentifier: entry.presentedOfferingContext.offeringIdentifier,
+      packageIdentifier: entry.identifier,
+    })),
+  );
+  console.log(
+    "[subscription] RevenueCat product identifiers",
+    availablePackages.map((entry) => entry.product.identifier),
   );
 }
 
@@ -75,6 +104,11 @@ async function getPremiumOverride() {
     .maybeSingle();
 
   if (error) {
+    if (error.code === "42703" || error.message.toLowerCase().includes("is_premium_override")) {
+      console.warn("[subscription] premium override column is not available yet. Defaulting to free access.");
+      return false;
+    }
+
     console.warn("[subscription] premium override lookup failed.", error.message);
     return false;
   }
@@ -108,10 +142,18 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
   const refreshSubscription = useCallback(async () => {
     const revenueCatConfig = getRevenueCatConfig();
+    const nextPremiumOverride = await getPremiumOverride().catch(() => false);
+
+    setIsPremiumOverride(nextPremiumOverride);
+
+    if (nextPremiumOverride) {
+      setStatus("ready");
+      setError(null);
+      return;
+    }
 
     if (Platform.OS === "web" || !revenueCatConfig.isConfigured) {
       setStatus("unconfigured");
-      setIsPremiumOverride(await getPremiumOverride().catch(() => false));
       setError(null);
       return;
     }
@@ -127,16 +169,15 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
       await identifyRevenueCatUser();
 
-      const [nextCustomerInfo, nextOfferings, nextPremiumOverride] = await Promise.all([
+      const [nextCustomerInfo, nextOfferings] = await Promise.all([
         Purchases.getCustomerInfo(),
         Purchases.getOfferings(),
-        getPremiumOverride(),
       ]);
 
+      logRevenueCatOfferings(nextOfferings);
       setCustomerInfo(nextCustomerInfo);
       setOffering(nextOfferings.current ?? null);
-      setIsPremiumOverride(nextPremiumOverride);
-      setError(null);
+      setError(findProPackage(nextOfferings.current ?? null) ? null : CONFIGURING_SUBSCRIPTION_MESSAGE);
       setStatus("ready");
     } catch (subscriptionError) {
       setError(subscriptionError instanceof Error ? subscriptionError.message : "Subscription status is unavailable.");
@@ -172,7 +213,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     }
 
     if (!proPackage) {
-      setError("The Pro subscription is not available yet. Check the RevenueCat offering setup.");
+      setError(CONFIGURING_SUBSCRIPTION_MESSAGE);
       return;
     }
 

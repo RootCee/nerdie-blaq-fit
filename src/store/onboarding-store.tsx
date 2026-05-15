@@ -10,6 +10,7 @@ import { OnboardingProfile, OnboardingState, SupabaseProfileRow } from "@/types/
 
 interface OnboardingStoreValue extends OnboardingState {
   updateProfile: (updates: Partial<OnboardingProfile>) => void;
+  clearProfileState: () => void;
   resetProfile: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -129,6 +130,14 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
             ...current.profile,
             ...updates,
           },
+        })),
+      clearProfileState: () =>
+        setState((current) => ({
+          ...current,
+          isComplete: false,
+          profile: emptyOnboardingProfile,
+          isSaving: false,
+          error: null,
         })),
       resetProfile: async () => {
         if (persistenceConfig.isConfigured && supabase) {

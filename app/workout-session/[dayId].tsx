@@ -16,9 +16,11 @@ import {
   replaceWorkoutDayLog,
 } from "@/features/workouts/workout-log-persistence";
 import { loadActiveWorkoutPlan } from "@/features/workouts/workout-plan-persistence";
+import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 import {
   GroupedWorkoutExerciseDisplay,
+  WorkoutPlan,
   WorkoutDay,
   WorkoutDayLog,
   WorkoutExercise,
@@ -28,6 +30,24 @@ import {
   WorkoutSupersetGroup,
   WorkoutVolumeSummary,
 } from "@/types/workout";
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function differenceInCalendarDays(laterDate: Date, earlierDate: Date) {
+  return Math.floor((startOfLocalDay(laterDate).getTime() - startOfLocalDay(earlierDate).getTime()) / MS_PER_DAY);
+}
+
+function getTodayProgramDayIndex(plan: WorkoutPlan) {
+  const planStartDate = startOfLocalDay(new Date(plan.planStartDate ?? new Date().toISOString()));
+  const rawDayOffset = differenceInCalendarDays(new Date(), planStartDate);
+  const safeDayOffset = Math.max(rawDayOffset, 0);
+
+  return ((safeDayOffset % 7) + 7) % 7;
+}
 
 function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
   const supersetsBySlug = new Map(
@@ -78,6 +98,7 @@ function deriveBestSetToday(sets: WorkoutSetLog[]): string | null {
 
 export default function WorkoutSessionScreen() {
   const params = useLocalSearchParams<{ dayId: string }>();
+  const { isPro, status: subscriptionStatus } = useSubscription();
   const [day, setDay] = useState<WorkoutDay | null>(null);
   const [log, setLog] = useState<WorkoutDayLog | null>(null);
   const [todayWeight, setTodayWeight] = useState("");
@@ -114,14 +135,34 @@ export default function WorkoutSessionScreen() {
     let isMounted = true;
 
     async function hydrateSession() {
+      if (subscriptionStatus === "loading") {
+        return;
+      }
+
       setIsLoading(true);
 
       try {
         const plan = await loadActiveWorkoutPlan();
-        const selectedDay = plan?.days.find((entry) => entry.id === params.dayId) ?? null;
+
+        if (!plan) {
+          throw new Error("This workout day could not be found in your active plan.");
+        }
+
+        const selectedDay = plan.days.find((entry) => entry.id === params.dayId) ?? null;
 
         if (!selectedDay) {
           throw new Error("This workout day could not be found in your active plan.");
+        }
+
+        const todayProgramIndex = getTodayProgramDayIndex(plan);
+        const todayWorkoutDay = plan.days[todayProgramIndex] ?? null;
+
+        if (!isPro && selectedDay.id !== todayWorkoutDay?.id) {
+          router.replace({
+            pathname: "/paywall" as never,
+            params: { feature: "weekly workout days" } as never,
+          } as never);
+          return;
         }
 
         const [existingLog, todayWeightLog, priorPerformance] = await Promise.all([
@@ -162,7 +203,7 @@ export default function WorkoutSessionScreen() {
     return () => {
       isMounted = false;
     };
-  }, [params.dayId]);
+  }, [isPro, params.dayId, subscriptionStatus]);
 
   const updateExerciseNotes = (exerciseSlug: string, value: string) => {
     setLog((current) => {

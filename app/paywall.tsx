@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -8,6 +8,9 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { getRevenueCatApiKeyName, REVENUECAT_PRODUCT_ID } from "@/lib/revenuecat";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
+
+const TERMS_URL = "https://nerdieblaq.xyz/terms";
+const PRIVACY_URL = "https://nerdieblaq.xyz/privacy";
 
 function formatFeatureName(feature: string | string[] | undefined) {
   const value = Array.isArray(feature) ? feature[0] : feature;
@@ -34,6 +37,9 @@ export default function PaywallScreen() {
   } = useSubscription();
   const [actionError, setActionError] = useState<string | null>(null);
   const isBusy = isPurchasing || isRestoring;
+  const hasPackage = Boolean(proPackage);
+  const configurationMessage = "Subscription is being configured. Please try again soon.";
+  const displayError = !hasPackage && status === "ready" ? null : actionError ?? error;
 
   const handlePurchase = async () => {
     setActionError(null);
@@ -52,6 +58,16 @@ export default function PaywallScreen() {
       await restorePurchases();
     } catch (restoreError) {
       setActionError(restoreError instanceof Error ? restoreError.message : "Restore did not complete.");
+    }
+  };
+
+  const openLegalUrl = async (url: string) => {
+    setActionError(null);
+
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setActionError("We couldn't open that link right now. Please try again.");
     }
   };
 
@@ -87,11 +103,14 @@ export default function PaywallScreen() {
             RevenueCat is not configured yet. Add {getRevenueCatApiKeyName()} before testing purchases.
           </Text>
         ) : null}
-        {error || actionError ? <Text style={styles.errorText}>{actionError ?? error}</Text> : null}
+        {status === "ready" && !hasPackage ? (
+          <Text style={styles.errorText}>{configurationMessage}</Text>
+        ) : null}
+        {displayError ? <Text style={styles.errorText}>{displayError}</Text> : null}
         <PrimaryButton
           label={isPurchasing ? "Starting trial..." : "Start 3-Day Free Trial"}
           onPress={() => void handlePurchase()}
-          disabled={isBusy || isPro || !proPackage}
+          disabled={isBusy || isPro || !hasPackage}
         />
         <PrimaryButton
           label={isRestoring ? "Restoring..." : "Restore Purchases"}
@@ -102,8 +121,17 @@ export default function PaywallScreen() {
         <Text style={styles.legalText}>
           Product ID: {proPackage?.product.identifier ?? REVENUECAT_PRODUCT_ID}. Payment is handled by Apple in-app purchase.
         </Text>
+        <View style={styles.legalLinkRow}>
+          <Pressable onPress={() => void openLegalUrl(TERMS_URL)} hitSlop={8}>
+            <Text style={styles.legalLink}>Terms of Use</Text>
+          </Pressable>
+          <Text style={styles.legalText}>and</Text>
+          <Pressable onPress={() => void openLegalUrl(PRIVACY_URL)} hitSlop={8}>
+            <Text style={styles.legalLink}>Privacy Policy</Text>
+          </Pressable>
+        </View>
         <Text style={styles.legalText}>
-          By starting a trial or restoring purchases, you agree to the Nerdie Blaq Fit Terms of Use and acknowledge the Privacy Policy.
+          By starting a trial or restoring purchases, you agree to the Terms of Use and acknowledge the Privacy Policy.
         </Text>
       </SectionCard>
     </Screen>
@@ -167,5 +195,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  legalLinkRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  legalLink: {
+    color: colors.primarySoft,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 20,
+    textDecorationLine: "underline",
   },
 });
