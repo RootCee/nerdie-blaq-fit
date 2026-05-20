@@ -1,5 +1,5 @@
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import Purchases, {
   CustomerInfo,
   LOG_LEVEL,
@@ -17,6 +17,7 @@ import {
 import { ensureSupabaseSession, getOnboardingPersistenceConfig, supabase } from "@/lib/supabase";
 
 type SubscriptionStatus = "loading" | "ready" | "unconfigured" | "error";
+type PurchaseActivationStatus = "idle" | "purchasing" | "activating" | "active" | "timeout";
 
 interface SubscriptionStoreValue {
   status: SubscriptionStatus;
@@ -24,6 +25,8 @@ interface SubscriptionStoreValue {
   isPremiumOverride: boolean;
   isPurchasing: boolean;
   isRestoring: boolean;
+  purchaseActivationStatus: PurchaseActivationStatus;
+  activationMessage: string | null;
   offering: PurchasesOffering | null;
   proPackage: PurchasesPackage | null;
   error: string | null;
@@ -35,6 +38,9 @@ interface SubscriptionStoreValue {
 const SubscriptionStoreContext = createContext<SubscriptionStoreValue | null>(null);
 
 const CONFIGURING_SUBSCRIPTION_MESSAGE = "Subscription is being configured. Please try again soon.";
+const PURCHASE_SYNC_TIMEOUT_MS = 30_000;
+const PURCHASE_SYNC_POLL_MS = 2_000;
+const PURCHASE_TIMEOUT_MESSAGE = "Purchase received. If Pro does not unlock automatically, tap Restore Purchases.";
 
 let hasConfiguredPurchases = false;
 
@@ -44,6 +50,12 @@ function canUseRevenueCat() {
 
 function hasProEntitlement(customerInfo: CustomerInfo | null) {
   return customerInfo?.entitlements.active[REVENUECAT_ENTITLEMENT_ID]?.isActive === true;
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 function findProPackage(offering: PurchasesOffering | null) {
@@ -138,6 +150,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   const [isPremiumOverride, setIsPremiumOverride] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [purchaseActivationStatus, setPurchaseActivationStatus] = useState<PurchaseActivationStatus>("idle");
+  const [activationMessage, setActivationMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refreshSubscription = useCallback(async () => {
@@ -194,6 +208,11 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
     const listener = (nextCustomerInfo: CustomerInfo) => {
       setCustomerInfo(nextCustomerInfo);
+      if (hasProEntitlement(nextCustomerInfo)) {
+        setPurchaseActivationStatus("active");
+        setActivationMessage("Pro is active. You can return to the app.");
+        setError(null);
+      }
     };
 
     Purchases.addCustomerInfoUpdateListener(listener);
@@ -203,8 +222,47 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     };
   }, [refreshSubscription]);
 
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      return;
+    }
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void refreshSubscription();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshSubscription]);
+
   const proPackage = useMemo(() => findProPackage(offering), [offering]);
   const isPro = isPremiumOverride || hasProEntitlement(customerInfo);
+
+  const refreshUntilProIsActive = useCallback(async () => {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt <= PURCHASE_SYNC_TIMEOUT_MS) {
+      const nextCustomerInfo = await Purchases.getCustomerInfo();
+      setCustomerInfo(nextCustomerInfo);
+
+      if (hasProEntitlement(nextCustomerInfo)) {
+        setPurchaseActivationStatus("active");
+        setActivationMessage("Pro is active. You can return to the app.");
+        setError(null);
+        return true;
+      }
+
+      await wait(PURCHASE_SYNC_POLL_MS);
+    }
+
+    setPurchaseActivationStatus("timeout");
+    setActivationMessage(PURCHASE_TIMEOUT_MESSAGE);
+    setError(PURCHASE_TIMEOUT_MESSAGE);
+    return false;
+  }, []);
 
   const purchasePro = useCallback(async () => {
     if (!canUseRevenueCat()) {
@@ -218,20 +276,37 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     }
 
     setIsPurchasing(true);
+    setPurchaseActivationStatus("purchasing");
+    setActivationMessage(null);
     setError(null);
 
     try {
       const result = await Purchases.purchasePackage(proPackage);
       setCustomerInfo(result.customerInfo);
+
+      if (hasProEntitlement(result.customerInfo)) {
+        setPurchaseActivationStatus("active");
+        setActivationMessage("Pro is active. You can return to the app.");
+        setError(null);
+        return;
+      }
+
+      setPurchaseActivationStatus("activating");
+      setActivationMessage("Activating Pro... this may take a few seconds");
+      await refreshUntilProIsActive();
     } catch (purchaseError) {
       if (!(purchaseError as { userCancelled?: boolean }).userCancelled) {
+        setPurchaseActivationStatus("idle");
+        setActivationMessage(null);
         setError(purchaseError instanceof Error ? purchaseError.message : "Purchase did not complete.");
         throw purchaseError;
       }
+      setPurchaseActivationStatus("idle");
+      setActivationMessage(null);
     } finally {
       setIsPurchasing(false);
     }
-  }, [proPackage]);
+  }, [proPackage, refreshUntilProIsActive]);
 
   const restorePurchases = useCallback(async () => {
     if (!canUseRevenueCat()) {
@@ -240,11 +315,18 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     }
 
     setIsRestoring(true);
+    setPurchaseActivationStatus("idle");
+    setActivationMessage(null);
     setError(null);
 
     try {
       const restoredInfo = await Purchases.restorePurchases();
       setCustomerInfo(restoredInfo);
+      if (hasProEntitlement(restoredInfo)) {
+        setPurchaseActivationStatus("active");
+        setActivationMessage("Pro is active. You can return to the app.");
+        setError(null);
+      }
     } catch (restoreError) {
       setError(restoreError instanceof Error ? restoreError.message : "Restore did not complete.");
       throw restoreError;
@@ -260,6 +342,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       isPremiumOverride,
       isPurchasing,
       isRestoring,
+      purchaseActivationStatus,
+      activationMessage,
       offering,
       proPackage,
       error,
@@ -269,11 +353,13 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     }),
     [
       error,
+      activationMessage,
       isPremiumOverride,
       isPro,
       isPurchasing,
       isRestoring,
       offering,
+      purchaseActivationStatus,
       proPackage,
       purchasePro,
       refreshSubscription,

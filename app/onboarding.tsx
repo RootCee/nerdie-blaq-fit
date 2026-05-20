@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { MedicalNotice } from "@/components/MedicalNotice";
 import { FormField } from "@/components/ui/FormField";
 import { MultiSelectChips, OptionChips } from "@/components/ui/OptionChips";
 import { ProgressDots } from "@/components/ui/ProgressDots";
@@ -249,6 +250,7 @@ export default function OnboardingScreen() {
             <View style={styles.bmiCard}>
               <Text style={styles.bmiTitle}>BMI: {bmiSummary.value} • {bmiSummary.category}</Text>
               <Text style={styles.helperText}>{bmiSummary.message}</Text>
+              <MedicalNotice includeBmiSources />
             </View>
           ) : null}
           <View style={styles.group}>

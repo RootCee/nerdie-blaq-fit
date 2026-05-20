@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { MedicalNotice } from "@/components/MedicalNotice";
 import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -517,11 +518,14 @@ export default function HomeScreen() {
           </Text>
           {progressError ? <Text style={styles.progressError}>{progressError}</Text> : null}
         </View>
+
+        <MedicalNotice includeBmiSources />
       </SectionCard>
 
       {isPro ? (
         <SectionCard title="Apple Health Integration" eyebrow={isHealthAuthorized ? "Health Sync" : "Apple Health"}>
           <Text style={styles.copy}>{APPLE_HEALTH_DISCLOSURE}</Text>
+          <MedicalNotice />
           {!isHealthAuthorized ? (
             <>
               <Text style={styles.copy}>
@@ -578,12 +582,15 @@ export default function HomeScreen() {
           ) : null}
         </SectionCard>
       ) : (
-        <ProLockCard
-          title="Apple Health Integration"
-          eyebrow="Apple Health"
-          description={APPLE_HEALTH_DISCLOSURE}
-          feature="Apple Health sync"
-        />
+        <>
+          <ProLockCard
+            title="Apple Health Integration"
+            eyebrow="Apple Health"
+            description={APPLE_HEALTH_DISCLOSURE}
+            feature="Apple Health sync"
+          />
+          <MedicalNotice />
+        </>
       )}
     </Screen>
   );

@@ -30,6 +30,8 @@ export default function PaywallScreen() {
     isPremiumOverride,
     isPurchasing,
     isRestoring,
+    purchaseActivationStatus,
+    activationMessage,
     proPackage,
     error,
     purchasePro,
@@ -37,9 +39,12 @@ export default function PaywallScreen() {
   } = useSubscription();
   const [actionError, setActionError] = useState<string | null>(null);
   const isBusy = isPurchasing || isRestoring;
+  const isActivating = purchaseActivationStatus === "activating";
   const hasPackage = Boolean(proPackage);
   const configurationMessage = "Subscription is being configured. Please try again soon.";
-  const displayError = !hasPackage && status === "ready" ? null : actionError ?? error;
+  const displayError = activationMessage
+    ? actionError
+    : !hasPackage && status === "ready" ? null : actionError ?? error;
 
   const handlePurchase = async () => {
     setActionError(null);
@@ -94,10 +99,16 @@ export default function PaywallScreen() {
             <Text style={styles.copy}>Checking subscription options.</Text>
           </View>
         ) : null}
+        {isPurchasing || isActivating ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.copy}>{activationMessage ?? "Starting purchase..."}</Text>
+          </View>
+        ) : null}
         {isPremiumOverride ? (
           <Text style={styles.successText}>Tester premium override is active for this account.</Text>
         ) : null}
-        {isPro ? <Text style={styles.successText}>Pro is active. You can return to the app.</Text> : null}
+        {isPro ? <Text style={styles.successText}>{activationMessage ?? "Pro is active. You can return to the app."}</Text> : null}
         {status === "unconfigured" ? (
           <Text style={styles.errorText}>
             RevenueCat is not configured yet. Add {getRevenueCatApiKeyName()} before testing purchases.
@@ -106,9 +117,12 @@ export default function PaywallScreen() {
         {status === "ready" && !hasPackage ? (
           <Text style={styles.errorText}>{configurationMessage}</Text>
         ) : null}
+        {activationMessage && purchaseActivationStatus === "timeout" ? (
+          <Text style={styles.helperText}>{activationMessage}</Text>
+        ) : null}
         {displayError ? <Text style={styles.errorText}>{displayError}</Text> : null}
         <PrimaryButton
-          label={isPurchasing ? "Starting trial..." : "Start 3-Day Free Trial"}
+          label={isActivating ? "Activating Pro..." : isPurchasing ? "Starting trial..." : "Start 3-Day Free Trial"}
           onPress={() => void handlePurchase()}
           disabled={isBusy || isPro || !hasPackage}
         />
@@ -188,6 +202,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.danger,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  helperText: {
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
   },

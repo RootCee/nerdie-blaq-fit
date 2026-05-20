@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { ProLockCard } from "@/components/ProLockCard";
+import { MedicalNotice } from "@/components/MedicalNotice";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
@@ -61,6 +62,7 @@ export default function MealsScreen() {
         <Text style={styles.helperText}>
           Estimated sample day: {sampleDayCalories} calories across the meals below.
         </Text>
+        <MedicalNotice />
       </SectionCard>
 
       <SectionCard title="Meal structure" eyebrow={guidance.dietaryPreference.replace("-", " ")}>
