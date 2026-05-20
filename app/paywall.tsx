@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -45,6 +45,25 @@ export default function PaywallScreen() {
   const displayError = activationMessage
     ? actionError
     : !hasPackage && status === "ready" ? null : actionError ?? error;
+
+  useEffect(() => {
+    if (!isPro || purchaseActivationStatus !== "active") {
+      return;
+    }
+
+    const closeTimer = setTimeout(() => {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
+
+      router.replace("/" as never);
+    }, 1200);
+
+    return () => {
+      clearTimeout(closeTimer);
+    };
+  }, [isPro, purchaseActivationStatus]);
 
   const handlePurchase = async () => {
     setActionError(null);
@@ -102,7 +121,7 @@ export default function PaywallScreen() {
         {isPurchasing || isActivating ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.copy}>{activationMessage ?? "Starting purchase..."}</Text>
+            <Text style={styles.copy}>{activationMessage ?? "Activating Pro... this may take a few seconds"}</Text>
           </View>
         ) : null}
         {isPremiumOverride ? (
@@ -122,7 +141,7 @@ export default function PaywallScreen() {
         ) : null}
         {displayError ? <Text style={styles.errorText}>{displayError}</Text> : null}
         <PrimaryButton
-          label={isActivating ? "Activating Pro..." : isPurchasing ? "Starting trial..." : "Start 3-Day Free Trial"}
+          label={isPurchasing || isActivating ? "Activating Pro..." : "Start 3-Day Free Trial"}
           onPress={() => void handlePurchase()}
           disabled={isBusy || isPro || !hasPackage}
         />
