@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 
+import { AppleHealthInfo } from "@/components/AppleHealthInfo";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { MedicalNotice } from "@/components/MedicalNotice";
 import { FormField } from "@/components/ui/FormField";
@@ -327,6 +328,7 @@ export default function OnboardingScreen() {
 
       {step === 3 ? (
         <SectionCard title="Recovery and nutrition" eyebrow="Step 4 of 4">
+          <AppleHealthInfo />
           <View style={styles.group}>
             <Text style={styles.label}>Dietary preference</Text>
             <OptionChips

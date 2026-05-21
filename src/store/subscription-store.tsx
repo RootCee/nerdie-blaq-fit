@@ -1,4 +1,4 @@
-import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import Purchases, {
   CustomerInfo,
@@ -55,6 +55,14 @@ function hasProEntitlement(customerInfo: CustomerInfo | null) {
   return customerInfo?.entitlements.active[REVENUECAT_ENTITLEMENT_ID]?.isActive === true;
 }
 
+function hasProProductSubscription(customerInfo: CustomerInfo | null) {
+  return customerInfo?.activeSubscriptions.includes(REVENUECAT_PRODUCT_ID) === true;
+}
+
+function hasProAccess(customerInfo: CustomerInfo | null) {
+  return hasProEntitlement(customerInfo) || hasProProductSubscription(customerInfo);
+}
+
 function wait(milliseconds: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
@@ -90,8 +98,14 @@ function getCustomerInfoDebugInfo(customerInfo: CustomerInfo | null) {
     originalAppUserId: customerInfo.originalAppUserId,
     entitlementIds,
     activeEntitlementIds,
+    activeSubscriptions: customerInfo.activeSubscriptions,
+    allPurchasedProductIdentifiers: customerInfo.allPurchasedProductIdentifiers,
+    latestExpirationDate: customerInfo.latestExpirationDate,
+    configuredProductExpirationDate: customerInfo.allExpirationDates[REVENUECAT_PRODUCT_ID] ?? null,
     hasProEntitlementKey: entitlementIds.includes(REVENUECAT_ENTITLEMENT_ID),
     hasActiveProEntitlement: hasProEntitlement(customerInfo),
+    hasConfiguredProductSubscription: hasProProductSubscription(customerInfo),
+    hasProAccess: hasProAccess(customerInfo),
   };
 }
 
@@ -109,6 +123,25 @@ async function getRevenueCatAppUserId() {
   } catch (error) {
     console.warn("[subscription-debug] Unable to read RevenueCat app user ID.", error);
     return null;
+  }
+}
+
+async function getFreshCustomerInfo(debugLabel: string) {
+  try {
+    await Purchases.invalidateCustomerInfoCache();
+  } catch (error) {
+    console.warn(`[subscription-debug] Unable to invalidate customer info cache for ${debugLabel}.`, error);
+  }
+
+  return Purchases.getCustomerInfo();
+}
+
+function logProductFallbackIfNeeded(label: string, customerInfo: CustomerInfo) {
+  if (hasProProductSubscription(customerInfo) && !hasProEntitlement(customerInfo)) {
+    logSubscriptionDebug(`${label} product subscription active without pro entitlement`, {
+      customerInfo: getCustomerInfoDebugInfo(customerInfo),
+      dashboardCheck: `Attach ${REVENUECAT_PRODUCT_ID} to RevenueCat entitlement ${REVENUECAT_ENTITLEMENT_ID}.`,
+    });
   }
 }
 
@@ -210,6 +243,11 @@ async function identifyRevenueCatUser() {
 
   if (userId) {
     const previousAppUserId = await getRevenueCatAppUserId();
+
+    if (previousAppUserId === userId) {
+      return;
+    }
+
     const loginResult = await Purchases.logIn(userId);
     logSubscriptionDebug("identified app user", {
       previousAppUserId,
@@ -231,6 +269,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   const [purchaseActivationStatus, setPurchaseActivationStatus] = useState<PurchaseActivationStatus>("idle");
   const [activationMessage, setActivationMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const purchaseOperationInFlightRef = useRef(false);
 
   const refreshSubscription = useCallback(async () => {
     const revenueCatConfig = getRevenueCatConfig();
@@ -268,6 +307,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         appUserId,
         customerInfo: getCustomerInfoDebugInfo(nextCustomerInfo),
       });
+      logProductFallbackIfNeeded("refresh", nextCustomerInfo);
       setCustomerInfo(nextCustomerInfo);
       setOffering(nextOfferings.current ?? null);
       setError(findProPackage(nextOfferings.current ?? null) ? null : CONFIGURING_SUBSCRIPTION_MESSAGE);
@@ -292,7 +332,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         customerInfo: getCustomerInfoDebugInfo(nextCustomerInfo),
       });
       setCustomerInfo(nextCustomerInfo);
-      if (hasProEntitlement(nextCustomerInfo)) {
+      logProductFallbackIfNeeded("listener", nextCustomerInfo);
+      if (hasProAccess(nextCustomerInfo)) {
         setPurchaseActivationStatus("active");
         setActivationMessage(PRO_ACTIVE_MESSAGE);
         setError(null);
@@ -327,6 +368,11 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
+        if (purchaseOperationInFlightRef.current) {
+          logSubscriptionDebug("foreground refresh skipped during purchase operation", {});
+          return;
+        }
+
         void refreshSubscription();
       }
     });
@@ -337,14 +383,14 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   }, [refreshSubscription]);
 
   const proPackage = useMemo(() => findProPackage(offering), [offering]);
-  const isPro = isPremiumOverride || hasProEntitlement(customerInfo);
+  const isPro = isPremiumOverride || hasProAccess(customerInfo);
 
   const refreshUntilProIsActive = useCallback(async () => {
     const startedAt = Date.now();
     let attempt = 1;
 
     while (Date.now() - startedAt <= PURCHASE_SYNC_TIMEOUT_MS) {
-      const nextCustomerInfo = await Purchases.getCustomerInfo();
+      const nextCustomerInfo = await getFreshCustomerInfo(`poll attempt ${attempt}`);
       setCustomerInfo(nextCustomerInfo);
       logSubscriptionDebug("poll customerInfo", {
         attempt,
@@ -352,8 +398,9 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         appUserId: await getRevenueCatAppUserId(),
         customerInfo: getCustomerInfoDebugInfo(nextCustomerInfo),
       });
+      logProductFallbackIfNeeded("poll", nextCustomerInfo);
 
-      if (hasProEntitlement(nextCustomerInfo)) {
+      if (hasProAccess(nextCustomerInfo)) {
         setPurchaseActivationStatus("active");
         setActivationMessage(PRO_ACTIVE_MESSAGE);
         setError(null);
@@ -382,6 +429,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     }
 
     setIsPurchasing(true);
+    purchaseOperationInFlightRef.current = true;
     setPurchaseActivationStatus("purchasing");
     setActivationMessage(ACTIVATING_PRO_MESSAGE);
     setError(null);
@@ -402,8 +450,9 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         package: getPackageDebugInfo(proPackage),
         customerInfo: getCustomerInfoDebugInfo(result.customerInfo),
       });
+      logProductFallbackIfNeeded("purchase result", result.customerInfo);
 
-      if (hasProEntitlement(result.customerInfo)) {
+      if (hasProAccess(result.customerInfo)) {
         setPurchaseActivationStatus("active");
         setActivationMessage(PRO_ACTIVE_MESSAGE);
         setError(null);
@@ -412,14 +461,15 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
       setPurchaseActivationStatus("activating");
       setActivationMessage(ACTIVATING_PRO_MESSAGE);
-      const forcedCustomerInfo = await Purchases.getCustomerInfo();
+      const forcedCustomerInfo = await getFreshCustomerInfo("post-purchase");
       setCustomerInfo(forcedCustomerInfo);
       logSubscriptionDebug("post-purchase forced customerInfo", {
         appUserId: await getRevenueCatAppUserId(),
         customerInfo: getCustomerInfoDebugInfo(forcedCustomerInfo),
       });
+      logProductFallbackIfNeeded("post-purchase", forcedCustomerInfo);
 
-      if (hasProEntitlement(forcedCustomerInfo)) {
+      if (hasProAccess(forcedCustomerInfo)) {
         setPurchaseActivationStatus("active");
         setActivationMessage(PRO_ACTIVE_MESSAGE);
         setError(null);
@@ -440,6 +490,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       setError("Purchase canceled");
     } finally {
       setIsPurchasing(false);
+      purchaseOperationInFlightRef.current = false;
     }
   }, [proPackage, refreshUntilProIsActive]);
 
@@ -450,6 +501,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     }
 
     setIsRestoring(true);
+    purchaseOperationInFlightRef.current = true;
     setPurchaseActivationStatus("activating");
     setActivationMessage(ACTIVATING_PRO_MESSAGE);
     setError(null);
@@ -465,22 +517,24 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         appUserId: await getRevenueCatAppUserId(),
         customerInfo: getCustomerInfoDebugInfo(restoredInfo),
       });
+      logProductFallbackIfNeeded("restore result", restoredInfo);
 
-      if (hasProEntitlement(restoredInfo)) {
+      if (hasProAccess(restoredInfo)) {
         setPurchaseActivationStatus("active");
         setActivationMessage(PRO_ACTIVE_MESSAGE);
         setError(null);
         return;
       }
 
-      const forcedCustomerInfo = await Purchases.getCustomerInfo();
+      const forcedCustomerInfo = await getFreshCustomerInfo("post-restore");
       setCustomerInfo(forcedCustomerInfo);
       logSubscriptionDebug("post-restore forced customerInfo", {
         appUserId: await getRevenueCatAppUserId(),
         customerInfo: getCustomerInfoDebugInfo(forcedCustomerInfo),
       });
+      logProductFallbackIfNeeded("post-restore", forcedCustomerInfo);
 
-      if (hasProEntitlement(forcedCustomerInfo)) {
+      if (hasProAccess(forcedCustomerInfo)) {
         setPurchaseActivationStatus("active");
         setActivationMessage(PRO_ACTIVE_MESSAGE);
         setError(null);
@@ -496,6 +550,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       throw restoreError;
     } finally {
       setIsRestoring(false);
+      purchaseOperationInFlightRef.current = false;
     }
   }, [refreshUntilProIsActive]);
 

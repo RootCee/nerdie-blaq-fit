@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 
+import { AppleHealthInfo } from "@/components/AppleHealthInfo";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { MedicalNotice } from "@/components/MedicalNotice";
-import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
@@ -41,9 +42,6 @@ const DAILY_FOCUS_QUOTES = [
   "Stay steady long enough for the mirror to catch up.",
   "The goal is not hype. The goal is proof.",
 ];
-
-const APPLE_HEALTH_DISCLOSURE =
-  "Nerdie Blaq Fit can read steps, active energy, workouts, resting heart rate, and body weight when you grant permission. This data is used only to personalize progress, recovery, and fitness tracking.";
 
 function clamp(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
@@ -524,15 +522,15 @@ export default function HomeScreen() {
 
       {isPro ? (
         <SectionCard title="Apple Health Integration" eyebrow={isHealthAuthorized ? "Health Sync" : "Apple Health"}>
-          <Text style={styles.copy}>{APPLE_HEALTH_DISCLOSURE}</Text>
+          <AppleHealthInfo />
           <MedicalNotice />
           {!isHealthAuthorized ? (
             <>
               <Text style={styles.copy}>
-                Connect Apple Health to bring steps, activity, recovery, and body metrics into Nerdie Blaq Fit.
+                Review the Apple Health details above before choosing which permissions to allow.
               </Text>
               <PrimaryButton
-                label={isEnablingHealthSync ? "Connecting..." : "Enable Health Sync"}
+                label={isEnablingHealthSync ? "Connecting..." : "Connect Apple Health"}
                 onPress={() => void handleEnableHealthSync()}
                 disabled={isEnablingHealthSync || isHealthLoading}
               />
@@ -582,15 +580,20 @@ export default function HomeScreen() {
           ) : null}
         </SectionCard>
       ) : (
-        <>
-          <ProLockCard
-            title="Apple Health Integration"
-            eyebrow="Apple Health"
-            description={APPLE_HEALTH_DISCLOSURE}
-            feature="Apple Health sync"
+        <SectionCard title="Apple Health Integration" eyebrow="Apple Health">
+          <AppleHealthInfo />
+          <Text style={styles.copy}>Apple Health sync is a Pro feature. You can review what is shared before any permission request appears.</Text>
+          <PrimaryButton
+            label="View Pro to Connect Apple Health"
+            onPress={() =>
+              router.push({
+                pathname: "/paywall" as never,
+                params: { feature: "Apple Health sync" } as never,
+              } as never)
+            }
           />
           <MedicalNotice />
-        </>
+        </SectionCard>
       )}
     </Screen>
   );

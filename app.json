@@ -24,7 +24,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "33",
+      "buildNumber": "35",
       "supportsTablet": false,
       "requireFullScreen": true,
       "entitlements": {
@@ -36,8 +36,8 @@
           "arm64",
           "healthkit"
         ],
-        "NSHealthShareUsageDescription": "Nerdie Blaq Fit reads health data to personalize workouts, recovery, and progress tracking.",
-        "NSHealthUpdateUsageDescription": "Nerdie Blaq Fit writes completed workouts to Apple Health when you choose to sync."
+        "NSHealthShareUsageDescription": "Nerdie Blaq Fit can connect with Apple Health to sync workouts, activity, calories, weight, and wellness data to improve fitness tracking and personalized insights.",
+        "NSHealthUpdateUsageDescription": "Nerdie Blaq Fit writes completed workouts to Apple Health only when you choose to connect and grant permission."
       }
     },
     "android": {
