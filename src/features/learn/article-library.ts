@@ -14,7 +14,7 @@ export const learnArticles: LearnArticle[] = [
         "Set a modest calorie target that works on busy weekdays, social weekends, and low-motivation days — not just ideal ones. Anchor protein at each meal so hunger stays manageable and muscle stays protected.",
       ],
       commonMistakes: [
-        "Swinging between extreme restriction and full rebounds every few weeks.",
+        "Swinging between overly aggressive restriction and full rebounds every few weeks.",
         "Cutting calories so far that training quality collapses and energy crashes.",
         "Treating one off-plan meal as reason to abandon the rest of the week.",
       ],
@@ -37,7 +37,7 @@ export const learnArticles: LearnArticle[] = [
         "Training is the stimulus, but food and recovery are what turn that stimulus into actual muscle. Without a small calorie surplus, enough protein, and enough sleep, you are stressing the body without giving it what it needs to adapt.",
       ],
       howToApplyIt: [
-        "Eat in a small surplus — around 150–250 calories above maintenance. Spread protein across meals, time carbs around training for energy, and treat sleep as a non-negotiable part of the program.",
+        "Eat in a small surplus — around 150–250 calories above maintenance. Spread protein across meals, time carbs around training for energy, and treat sleep as a priority in the program.",
       ],
       commonMistakes: [
         "Training hard but undereating, then wondering why progress stalls.",
@@ -60,7 +60,7 @@ export const learnArticles: LearnArticle[] = [
     shortSummary: "Sleep, stress control, and pacing make your training stick. Recovery is not separate from results.",
     sections: {
       whyItMatters: [
-        "Training breaks tissue down. Recovery is when it rebuilds stronger. If training stress keeps rising while sleep and recovery stay poor, output eventually drops and injury risk climbs.",
+        "Training breaks tissue down. Recovery is when it rebuilds stronger. If training stress keeps rising while sleep and recovery stay poor, output eventually drops and setbacks become more likely.",
       ],
       howToApplyIt: [
         "Build at least one full rest day into every training week. Use low-intensity movement like walking or mobility work on off days. Protect sleep above all other recovery tools — nothing else comes close.",
@@ -146,7 +146,7 @@ export const learnArticles: LearnArticle[] = [
       commonMistakes: [
         "Treating one bad day as proof that the whole plan isn't working.",
         "Waiting to feel 'ready' or 'motivated' before starting again.",
-        "Setting all-or-nothing standards that guarantee an eventual crash.",
+        "Setting all-or-nothing standards that set up a future crash.",
       ],
       actionSteps: [
         "When you miss a session or eat off-plan, get back on track at the next meal or workout — not next Monday.",

@@ -85,11 +85,11 @@ async function requestGeminiAdaptation(input: AdaptiveTrainingInput, apiKey: str
 function buildPrompt(input: AdaptiveTrainingInput) {
   return [
     "You are an AI bodybuilding plan adapter for Nerdie Blaq Fit.",
-    "Only adapt today's plan. Do not diagnose injuries, provide medical claims, or replace the whole workout.",
+    "Only adapt today's plan. Do not assess injuries, provide health claims, or replace the whole workout.",
     "Preserve the training path, target muscles, compounds, and progression philosophy.",
     "Return strict JSON with exactly these fields: readinessScore, volumeAdjustment, exerciseSwaps, removedExercises, coachingCues, coachMessage, safetyFlags.",
     "Use readinessScore 0-100 and volumeAdjustment 0.5-1.0.",
-    "If joint pain is mentioned, recommend safer exercise swaps and include a safety flag telling the user to use pain-free range and consult a qualified professional if symptoms persist.",
+    "If joint pain is mentioned, suggest safer exercise swaps and include a safety flag telling the user to consider safer alternatives, use pain-free range, and stop if pain worsens.",
     JSON.stringify({
       selectedTrainingPath: input.selectedTrainingPath,
       profile: {

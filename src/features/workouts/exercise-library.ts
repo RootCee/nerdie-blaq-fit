@@ -863,7 +863,7 @@ const detailedEntries: ExerciseMetadata[] = [
     ],
   }),
   createExerciseMetadata("Dragon flag", {
-    shortDescription: "A high-skill front-core movement demanding extreme trunk stiffness.",
+    shortDescription: "A high-skill front-core movement requiring strong trunk stiffness.",
     stepByStepInstructions: [
       "Grip the bench firmly overhead and lift the body into a rigid line.",
       "Lower the body slowly while keeping hips and ribs locked together.",

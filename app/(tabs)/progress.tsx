@@ -1,18 +1,39 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { FormField } from "@/components/ui/FormField";
+import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
+import { getChallengeById } from "@/config/challenges";
 import { deriveBodyWeightHistorySummary } from "@/features/body-weight/body-weight-history";
 import { loadRecentBodyWeightHistory } from "@/features/body-weight/body-weight-persistence";
+import { buildChallengeProofSummary, getTodayDateKey } from "@/features/challenges/challenge-proof";
+import { loadActiveChallenge, loadChallengeDailyLogs, saveChallengeDailyLog, startChallenge } from "@/features/challenges/challenge-persistence";
+import { loadDailyCheckIn } from "@/features/workouts/daily-checkin-persistence";
 import { deriveWorkoutMotivationStats } from "@/features/workouts/workout-history-stats";
 import { loadWorkoutHistory } from "@/features/workouts/workout-log-persistence";
+import { calculateReadinessScore } from "@/lib/adaptiveTraining";
+import { generateShareProgressText } from "@/lib/share/shareProgress";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
+import { ChallengeProofSummary, MissedWorkoutReason, UserChallenge, UserChallengeDailyLog } from "@/types/challenge";
 import { WorkoutHistoryItem, WorkoutMotivationStats } from "@/types/workout";
 import { BodyWeightHistorySummary } from "@/types/body-weight";
+
+const beastChallenge = getChallengeById("four-week-beast");
+const missedReasonOptions: Array<{ label: string; value: MissedWorkoutReason }> = [
+  { label: "Not enough time", value: "not-enough-time" },
+  { label: "Too sore", value: "too-sore" },
+  { label: "Low energy", value: "low-energy" },
+  { label: "Injury/pain", value: "injury-pain" },
+  { label: "Forgot", value: "forgot" },
+  { label: "Other", value: "other" },
+];
 
 function buildWeeklyRecapMessage(
   workoutsCompletedThisWeek: number,
@@ -39,8 +60,18 @@ function buildWeeklyRecapMessage(
 }
 
 export default function ProgressScreen() {
-  const { profile } = useOnboardingStore();
+  const { profile, isComplete } = useOnboardingStore();
+  const { isPro } = useSubscription();
   const [history, setHistory] = useState<WorkoutHistoryItem[]>([]);
+  const [challenge, setChallenge] = useState<UserChallenge | null>(null);
+  const [challengeLogs, setChallengeLogs] = useState<UserChallengeDailyLog[]>([]);
+  const [challengeSummary, setChallengeSummary] = useState<ChallengeProofSummary | null>(null);
+  const [strengthNotes, setStrengthNotes] = useState("");
+  const [isMissedModalOpen, setIsMissedModalOpen] = useState(false);
+  const [missedReason, setMissedReason] = useState<MissedWorkoutReason>("not-enough-time");
+  const [challengeError, setChallengeError] = useState<string | null>(null);
+  const [challengeLoadError, setChallengeLoadError] = useState<string | null>(null);
+  const [isChallengeSaving, setIsChallengeSaving] = useState(false);
   const [bodyWeightSummary, setBodyWeightSummary] = useState<BodyWeightHistorySummary>({
     latestWeight: null,
     latestLoggedOn: null,
@@ -71,9 +102,31 @@ export default function ProgressScreen() {
             loadWorkoutHistory(),
             loadRecentBodyWeightHistory(7),
           ]);
+          let activeChallenge: UserChallenge | null = null;
+          let activeChallengeLogs: UserChallengeDailyLog[] = [];
+          let challengeBodyWeightLogs = recentBodyWeightLogs;
+          let challengeLoadMessage: string | null = null;
+
+          try {
+            activeChallenge = await loadActiveChallenge(beastChallenge.id);
+            activeChallengeLogs = activeChallenge ? await loadChallengeDailyLogs(activeChallenge.id) : [];
+            challengeBodyWeightLogs = activeChallenge ? await loadRecentBodyWeightHistory(28) : recentBodyWeightLogs;
+          } catch (challengeLoadFailure) {
+            challengeLoadMessage = challengeLoadFailure instanceof Error
+              ? challengeLoadFailure.message
+              : "Challenge data could not load right now.";
+          }
 
           if (isMounted) {
             setHistory(items);
+            setChallenge(activeChallenge);
+            setChallengeLogs(activeChallengeLogs);
+            setChallengeLoadError(challengeLoadMessage);
+            setChallengeSummary(
+              activeChallenge
+                ? buildChallengeProofSummary(activeChallenge, beastChallenge, activeChallengeLogs, challengeBodyWeightLogs)
+                : null,
+            );
             setStats(deriveWorkoutMotivationStats(items));
             setBodyWeightSummary(
               deriveBodyWeightHistorySummary(recentBodyWeightLogs, {
@@ -121,14 +174,218 @@ export default function ProgressScreen() {
     bodyWeightSummary.trendDirection,
     bodyWeightSummary.distanceFromGoal,
   );
+  const todayChallengeLog = challengeLogs.find((log) => log.logDate === getTodayDateKey()) ?? null;
+  const shouldShowSharePrompt = Boolean(challenge || challengeSummary);
+  const shareProgressText = shouldShowSharePrompt
+    ? generateShareProgressText({ fitScore: challengeSummary?.proofScore ?? null })
+    : null;
+
+  const refreshChallenge = async (activeChallenge = challenge) => {
+    if (!activeChallenge) {
+      setChallengeSummary(null);
+      setChallengeLogs([]);
+      setChallengeLoadError(null);
+      return;
+    }
+
+    try {
+      const [logs, bodyWeightLogs] = await Promise.all([
+        loadChallengeDailyLogs(activeChallenge.id),
+        loadRecentBodyWeightHistory(28),
+      ]);
+      setChallenge(activeChallenge);
+      setChallengeLogs(logs);
+      setChallengeLoadError(null);
+      setChallengeSummary(buildChallengeProofSummary(activeChallenge, beastChallenge, logs, bodyWeightLogs));
+    } catch (refreshError) {
+      setChallengeLoadError(refreshError instanceof Error ? refreshError.message : "Challenge data could not refresh right now.");
+    }
+  };
+
+  const handleStartChallenge = async () => {
+    if (!isPro) {
+      return;
+    }
+
+    setIsChallengeSaving(true);
+    setChallengeError(null);
+
+    try {
+      const nextChallenge = await startChallenge(beastChallenge.id);
+      await refreshChallenge(nextChallenge);
+      setChallengeError(null);
+    } catch (startError) {
+      setChallengeError(startError instanceof Error ? startError.message : "Challenge save failed. Try again when your connection or local storage is available.");
+    } finally {
+      setIsChallengeSaving(false);
+    }
+  };
+
+  const getTodayReadinessScore = async () => {
+    const checkIn = await loadDailyCheckIn(getTodayDateKey());
+    return checkIn ? calculateReadinessScore(checkIn) : null;
+  };
+
+  const handleSaveChallengeLog = async (workoutCompleted: boolean, reason: MissedWorkoutReason | null) => {
+    if (!challenge) {
+      setChallengeError("No active challenge is available yet. Start the challenge before logging today.");
+      return;
+    }
+
+    if (!isPro) {
+      setChallengeError("The 4-Week Beast Challenge is a Pro proof-tracking feature.");
+      return;
+    }
+
+    setIsChallengeSaving(true);
+    setChallengeError(null);
+
+    try {
+      const readinessScore = await getTodayReadinessScore();
+      await saveChallengeDailyLog({
+        userChallengeId: challenge.id,
+        logDate: getTodayDateKey(),
+        workoutCompleted,
+        missedReason: workoutCompleted ? null : reason,
+        readinessScore,
+        painFlag: reason === "injury-pain",
+        strengthNotes,
+      });
+      setStrengthNotes("");
+      setIsMissedModalOpen(false);
+      await refreshChallenge(challenge);
+    } catch (logError) {
+      setChallengeError(logError instanceof Error ? logError.message : "Daily log save failed. Your challenge proof was not updated.");
+    } finally {
+      setIsChallengeSaving(false);
+    }
+  };
 
   return (
-    <Screen title="Progress" subtitle="A clear view of the work you’ve already put in.">
+    <>
+    <Screen title="Progress" subtitle="Proof of consistency, smart training, and the work you have already put in.">
       {error ? (
         <SectionCard title="Progress not available" eyebrow="Try again">
           <Text style={styles.copy}>{error}</Text>
         </SectionCard>
       ) : null}
+
+      {!isComplete ? (
+        <SectionCard title="Profile not finished" eyebrow="Missing profile">
+          <Text style={styles.copy}>
+            Finish onboarding to unlock personalized training paths, adaptive readiness, and challenge proof tracking.
+          </Text>
+          <PrimaryButton label="Finish setup" onPress={() => router.push("/onboarding" as never)} variant="ghost" />
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title={beastChallenge.title} eyebrow="Proof of consistency">
+        <Text style={styles.copy}>{beastChallenge.description}</Text>
+        {challengeLoadError ? (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeTitle}>Challenge load failed</Text>
+            <Text style={styles.copy}>{challengeLoadError}</Text>
+            <PrimaryButton label="Retry challenge data" onPress={() => void refreshChallenge()} variant="ghost" />
+          </View>
+        ) : null}
+        {!isPro ? (
+          <ProLockCard
+            title="4-Week Beast Challenge"
+            description="Unlock the 4-week challenge, advanced proof tracking, and recovery-aware progress metrics with Pro. Free training and basic progress tracking still work without Pro."
+            feature="4-Week Beast Challenge"
+          />
+        ) : null}
+        {!challenge ? (
+          <>
+            <Text style={styles.streakNote}>
+              No challenge data yet. Start when you are ready to track proof of consistency.
+            </Text>
+            <View style={styles.challengeGoalList}>
+              {beastChallenge.weeklyGoals.slice(0, 3).map((goal) => (
+                <Text key={goal} style={styles.noteItem}>• {goal}</Text>
+              ))}
+            </View>
+            {challengeError ? <Text style={styles.errorText}>{challengeError}</Text> : null}
+            <PrimaryButton
+              label={isChallengeSaving ? "Starting challenge..." : "Start 4-Week Beast Challenge"}
+              onPress={() => void handleStartChallenge()}
+              disabled={isChallengeSaving || !isPro}
+            />
+          </>
+        ) : challengeSummary ? (
+          <>
+            <View style={styles.proofScoreCard}>
+              <Text style={styles.proofScoreValue}>{challengeSummary.proofScore}</Text>
+              <View style={styles.proofScoreCopy}>
+                <Text style={styles.proofScoreTitle}>Nerdie Blaq Fit Score</Text>
+                <Text style={styles.streakNote}>Discipline, consistency, and smart training. Not a body judgment.</Text>
+              </View>
+            </View>
+            <View style={styles.statsRow}>
+              <StatChip label="Day" value={`${challengeSummary.currentDay}/28`} />
+              <StatChip label="Week" value={String(challengeSummary.currentWeek)} />
+              <StatChip label="Complete" value={`${challengeSummary.completionPercentage}%`} />
+              <StatChip label="This week" value={String(challengeSummary.workoutsCompletedThisWeek)} />
+              <StatChip label="Missed" value={String(challengeSummary.missedSessions)} />
+              <StatChip label="Check-ins" value={String(challengeSummary.checkInStreak)} />
+              <StatChip label="Avg recovery" value={challengeSummary.averageReadinessScore === null ? "N/A" : String(challengeSummary.averageReadinessScore)} />
+              <StatChip label="Pain flags" value={String(challengeSummary.painFlags)} />
+              <StatChip label="Strength notes" value={String(challengeSummary.strengthNoteCount)} />
+              <StatChip label="Weight logs" value={String(challengeSummary.bodyWeightEntryCount)} />
+            </View>
+            {!challengeLogs.length ? (
+              <Text style={styles.streakNote}>
+                No challenge logs yet. Save today&apos;s workout or missed-session reason to start your proof record.
+              </Text>
+            ) : null}
+            {challengeSummary.averageReadinessScore === null ? (
+              <Text style={styles.streakNote}>
+                No readiness score yet. Complete a daily readiness check-in before logging challenge proof to include recovery data.
+              </Text>
+            ) : null}
+            <Text style={styles.streakNote}>
+              Challenge storage: {challenge.storageMode === "supabase" ? "Supabase" : "local fallback"}
+            </Text>
+            <Text style={styles.copy}>Earn the split through logged proof: train hard, adjust smart, and keep honest notes when life interrupts the plan.</Text>
+            {shareProgressText ? (
+              <View style={styles.sharePromptCard}>
+                <Text style={styles.sharePromptTitle}>Share your proof. Show your discipline.</Text>
+                <Text style={styles.copy}>{shareProgressText}</Text>
+              </View>
+            ) : null}
+            <FormField
+              label="Strength notes"
+              value={strengthNotes}
+              onChangeText={setStrengthNotes}
+              placeholder="Bench felt smoother, squat +5 lb, better control..."
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            {todayChallengeLog ? (
+              <Text style={styles.statusLine}>
+                Today logged: {todayChallengeLog.workoutCompleted ? "workout completed" : `missed - ${todayChallengeLog.missedReason?.replace(/-/g, " ") ?? "reason saved"}`}
+              </Text>
+            ) : null}
+            {challengeError ? <Text style={styles.errorText}>{challengeError}</Text> : null}
+            <View style={styles.buttonRow}>
+              <PrimaryButton
+                label={isChallengeSaving ? "Saving..." : "Mark Workout Complete"}
+                onPress={() => void handleSaveChallengeLog(true, null)}
+                disabled={isChallengeSaving || !isPro}
+                style={styles.flexButton}
+              />
+              <PrimaryButton
+                label="Log Missed Session"
+                onPress={() => setIsMissedModalOpen(true)}
+                disabled={isChallengeSaving || !isPro}
+                variant="ghost"
+                style={styles.flexButton}
+              />
+            </View>
+          </>
+        ) : null}
+      </SectionCard>
 
       <SectionCard title="Momentum" eyebrow="This week so far">
         <View style={styles.statsRow}>
@@ -268,6 +525,53 @@ export default function ProgressScreen() {
         </Pressable>
       ))}
     </Screen>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isMissedModalOpen}
+        onRequestClose={() => setIsMissedModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>What got in the way?</Text>
+            <Text style={styles.copy}>
+              Missed sessions are data, not a judgment. Log the reason so the next choice gets smarter.
+            </Text>
+            <View style={styles.reasonGrid}>
+              {missedReasonOptions.map((option) => {
+                const isSelected = missedReason === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setMissedReason(option.value)}
+                    style={[styles.reasonChip, isSelected ? styles.reasonChipSelected : null]}
+                  >
+                    <Text style={[styles.reasonChipText, isSelected ? styles.reasonChipTextSelected : null]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.buttonStack}>
+              <PrimaryButton
+                label={isChallengeSaving ? "Saving..." : "Save Missed Session"}
+                onPress={() => void handleSaveChallengeLog(false, missedReason)}
+                disabled={isChallengeSaving}
+              />
+              <PrimaryButton
+                label="Cancel"
+                onPress={() => setIsMissedModalOpen(false)}
+                disabled={isChallengeSaving}
+                variant="ghost"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -280,6 +584,79 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  buttonStack: {
+    gap: spacing.sm,
+  },
+  flexButton: {
+    flex: 1,
+    minWidth: 180,
+  },
+  challengeGoalList: {
+    gap: spacing.xs,
+  },
+  noteItem: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  proofScoreCard: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  proofScoreValue: {
+    color: colors.primarySoft,
+    fontSize: 44,
+    fontWeight: "900",
+    lineHeight: 50,
+  },
+  proofScoreCopy: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  proofScoreTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
+  noticeBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  noticeTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  sharePromptCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  sharePromptTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 22,
   },
   copy: {
     color: colors.textMuted,
@@ -295,6 +672,11 @@ const styles = StyleSheet.create({
     color: colors.primarySoft,
     fontSize: 13,
     fontWeight: "700",
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 14,
+    lineHeight: 20,
   },
   metaLine: {
     color: colors.textMuted,
@@ -355,5 +737,53 @@ const styles = StyleSheet.create({
     color: colors.primarySoft,
     fontSize: 13,
     fontWeight: "600",
+  },
+  modalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.72)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: spacing.md,
+    maxWidth: 420,
+    padding: spacing.lg,
+    width: "100%",
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 28,
+  },
+  reasonGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  reasonChip: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  reasonChipSelected: {
+    backgroundColor: "rgba(249,115,22,0.14)",
+    borderColor: colors.primary,
+  },
+  reasonChipText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  reasonChipTextSelected: {
+    color: colors.primarySoft,
   },
 });

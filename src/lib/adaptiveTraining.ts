@@ -81,7 +81,7 @@ export function adaptWorkoutForReadiness(input: AdaptiveTrainingInput): Adaptive
       exerciseSwaps.push({
         from: item.name,
         to: swapped.name,
-        reason: "Joint note matched a safer movement pattern.",
+        reason: "Joint note suggests considering a safer movement pattern today.",
       });
     }
 
@@ -225,7 +225,7 @@ function swapExerciseForJointNotes(exercise: WorkoutExercise, jointRegions: Join
         name: match.replacement,
         displayName: match.replacement,
         slug: match.replacement.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
-        notes: `${exercise.notes} Swapped to a safer ${region}-friendly option today. This is not medical advice; stop if pain increases.`,
+        notes: `${exercise.notes} Consider this safer ${region}-friendly alternative today. Stop if pain worsens.`,
       };
     }
   }
@@ -243,7 +243,7 @@ function buildSafetyFlags(checkIn: DailyReadinessCheckIn): string[] {
   const flags: string[] = [];
 
   if (checkIn.jointPainNotes.trim()) {
-    flags.push("Joint pain noted. Use pain-free ranges and seek a qualified professional if symptoms persist or worsen.");
+    flags.push("Joint pain noted. Consider safer alternatives, use pain-free ranges, and stop if pain worsens.");
   }
 
   if (checkIn.sleepHours < 5.5) {
@@ -291,7 +291,7 @@ function buildAdjustmentSummary(volumeAdjustment: number, exerciseSwaps: Exercis
 
 function buildCoachMessage(readinessScore: number, pathTitle: string, safetyFlags: string[]) {
   if (safetyFlags.some((flag) => flag.includes("Joint pain"))) {
-    return `${pathTitle} stays on track today, but pain-free movement quality comes first. Treat swaps as a smart adjustment, not a diagnosis.`;
+    return `${pathTitle} stays on track today, but pain-free movement quality comes first. Consider the swaps, stay conservative, and stop if pain worsens.`;
   }
 
   if (readinessScore < 55) {

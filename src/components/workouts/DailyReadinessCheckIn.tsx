@@ -9,13 +9,14 @@ import { colors, spacing } from "@/theme";
 interface DailyReadinessCheckInProps {
   value: DailyReadinessCheckInValue;
   isSaving: boolean;
+  error: string | null;
   onChange: (value: DailyReadinessCheckInValue) => void;
   onSubmit: () => void;
 }
 
 const sorenessGroups: Array<keyof MuscleGroupSoreness> = ["chest", "back", "shoulders", "arms", "legs", "core"];
 
-export function DailyReadinessCheckIn({ value, isSaving, onChange, onSubmit }: DailyReadinessCheckInProps) {
+export function DailyReadinessCheckIn({ value, isSaving, error, onChange, onSubmit }: DailyReadinessCheckInProps) {
   const updateNumber = (key: keyof DailyReadinessCheckInValue, rawValue: string) => {
     const nextValue = Number(rawValue.replace(/[^0-9.]/g, ""));
     onChange({
@@ -38,7 +39,7 @@ export function DailyReadinessCheckIn({ value, isSaving, onChange, onSubmit }: D
   return (
     <SectionCard title="Daily Readiness Check-In" eyebrow="Before generation">
       <Text style={styles.copy}>
-        Daily adaptation works best when the inputs are honest. This does not diagnose injuries; it helps today's plan scale intelligently.
+        Daily adaptation works best when the inputs are honest. This is training guidance, not medical care.
       </Text>
       <View style={styles.grid}>
         <FormField
@@ -103,6 +104,7 @@ export function DailyReadinessCheckIn({ value, isSaving, onChange, onSubmit }: D
         onPress={onSubmit}
         disabled={isSaving}
       />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <Text style={styles.storageText}>
         Check-in mode: {value.storageMode === "supabase" ? "Supabase" : "local fallback"}
       </Text>
@@ -130,5 +132,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+    lineHeight: 19,
   },
 });

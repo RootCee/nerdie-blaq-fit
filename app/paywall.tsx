@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { marketingCopy } from "@/config/marketingCopy";
 import { getRevenueCatApiKeyName, REVENUECAT_PRODUCT_ID } from "@/lib/revenuecat";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
@@ -16,7 +17,7 @@ function formatFeatureName(feature: string | string[] | undefined) {
   const value = Array.isArray(feature) ? feature[0] : feature;
 
   if (!value) {
-    return "Pro training, nutrition, calendar, and Apple Health features";
+    return "AI adaptive training, Beast Path, and advanced proof tracking";
   }
 
   return value.replace(/-/g, " ");
@@ -107,11 +108,13 @@ export default function PaywallScreen() {
           <Text style={styles.copy}>Start with a 3-day free trial. Cancel anytime in your Apple ID subscriptions.</Text>
         </View>
         <View style={styles.featureList}>
-          <Text style={styles.featureItem}>Blaq Mass System v1</Text>
-          <Text style={styles.featureItem}>Advanced program calendar</Text>
-          <Text style={styles.featureItem}>Apple Health sync</Text>
-          <Text style={styles.featureItem}>Advanced nutrition features</Text>
+          {marketingCopy.proFeatureBullets.map((featureItem) => (
+            <Text key={featureItem} style={styles.featureItem}>{featureItem}</Text>
+          ))}
         </View>
+        <Text style={styles.helperText}>
+          Foundation training, basic workout tracking, progress history, and learning tools remain available without Pro.
+        </Text>
         {status === "loading" ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />

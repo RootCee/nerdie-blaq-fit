@@ -172,6 +172,46 @@ function buildProgramCalendar(plan: WorkoutPlan, dayLogs: Record<string, Workout
   }));
 }
 
+function getReadinessLabel(score: number) {
+  if (score >= 80) return "Ready";
+  if (score >= 60) return "Steady";
+  if (score >= 45) return "Scale";
+  return "Recover";
+}
+
+function getPlainAdjustment(result: AdaptiveTrainingResult) {
+  if (result.volumeAdjustment < 0.8) {
+    return "Today keeps the main work and pulls back accessories so you can train without forcing recovery.";
+  }
+
+  if (result.removedExercises.length > 0) {
+    return "Today is compressed. Compounds stay in, and lower-priority work moves out.";
+  }
+
+  if (result.exerciseSwaps.length > 0) {
+    return "Today uses safer alternatives for the areas you flagged while keeping the same target muscles.";
+  }
+
+  return "Today stays close to the original plan. Use clean reps and keep one or two reps in reserve.";
+}
+
+function getWhyChanged(result: AdaptiveTrainingResult, checkIn: DailyReadinessCheckInValue) {
+  const reasons: string[] = [];
+
+  if (checkIn.sleepHours < 7) reasons.push("sleep");
+  if (checkIn.stressLevel >= 8) reasons.push("stress");
+  if (checkIn.previousSessionRpe >= 9) reasons.push("previous session effort");
+  if (Math.max(...Object.values(checkIn.soreness)) >= 6) reasons.push("soreness");
+  if (checkIn.timeAvailableMinutes < 55) reasons.push("available time");
+  if (checkIn.jointPainNotes.trim()) reasons.push("joint notes");
+
+  if (!reasons.length) {
+    return "Your check-in supports the planned session, so only minor coaching guidance was added.";
+  }
+
+  return `Changed because your check-in flagged ${reasons.join(", ")}. The goal is to preserve the target muscles without piling on unnecessary fatigue.`;
+}
+
 export default function WorkoutScreen() {
   const { profile, isComplete, updateProfile, saveProfile } = useOnboardingStore();
   const { isPro } = useSubscription();
@@ -198,6 +238,8 @@ export default function WorkoutScreen() {
   const [dailyCheckIn, setDailyCheckIn] = useState<DailyReadinessCheckInValue>(() => createDefaultDailyCheckIn());
   const [adaptiveResult, setAdaptiveResult] = useState<AdaptiveTrainingResult | null>(null);
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
+  const [checkInError, setCheckInError] = useState<string | null>(null);
+  const [adaptiveError, setAdaptiveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const persistenceConfig = getOnboardingPersistenceConfig();
   const scheduledGeneratedPlan = useMemo(
@@ -447,6 +489,8 @@ export default function WorkoutScreen() {
 
       setPlan(scheduledGeneratedPlan);
       setDayLogs({});
+      setAdaptiveResult(null);
+      setAdaptiveError(null);
       setError(null);
     } catch (replaceError) {
       setError(replaceError instanceof Error ? replaceError.message : "Unable to replace the current workout plan.");
@@ -459,6 +503,7 @@ export default function WorkoutScreen() {
     const nextProfile = { ...profile, trainingPathId: pathId };
     updateProfile({ trainingPathId: pathId });
     setAdaptiveResult(null);
+    setAdaptiveError(null);
 
     try {
       await saveProfile(nextProfile);
@@ -469,6 +514,7 @@ export default function WorkoutScreen() {
 
   const handleGenerateAdaptiveWorkout = async () => {
     if (!plan) {
+      setAdaptiveError("No workout plan is available yet. Refresh your plan and try again.");
       return;
     }
 
@@ -477,10 +523,13 @@ export default function WorkoutScreen() {
 
     if (!todayWorkout) {
       setAdaptiveResult(null);
+      setAdaptiveError("No workout is scheduled for today. Use this as a recovery day or pick another unlocked training day.");
       return;
     }
 
     setIsSavingCheckIn(true);
+    setCheckInError(null);
+    setAdaptiveError(null);
 
     try {
       const savedCheckIn = await saveDailyCheckIn(dailyCheckIn);
@@ -497,7 +546,9 @@ export default function WorkoutScreen() {
       setAdaptiveResult(result);
       setSelectedProgramDay(todayIndex);
     } catch (checkInError) {
-      setError(checkInError instanceof Error ? checkInError.message : "Unable to generate today's adaptive workout.");
+      const message = checkInError instanceof Error ? checkInError.message : "Unable to generate today's adaptive workout.";
+      setCheckInError("Check-in could not be saved. Your workout was not changed.");
+      setAdaptiveError(message);
     } finally {
       setIsSavingCheckIn(false);
     }
@@ -590,6 +641,11 @@ export default function WorkoutScreen() {
           </View>
           <View style={styles.pathSelector}>
             <Text style={styles.pathSelectorTitle}>Training path</Text>
+            {!profile.trainingPathId ? (
+              <Text style={styles.helperText}>
+                No saved path yet. We are showing the recommended {selectedTrainingPath.title}; choose a path to save it.
+              </Text>
+            ) : null}
             <View style={styles.pathGrid}>
               {TRAINING_PATHS.map((path) => {
                 const isSelected = selectedTrainingPath.id === path.id;
@@ -713,25 +769,69 @@ export default function WorkoutScreen() {
             <DailyReadinessCheckIn
               value={dailyCheckIn}
               isSaving={isSavingCheckIn}
+              error={checkInError}
               onChange={setDailyCheckIn}
               onSubmit={() => void handleGenerateAdaptiveWorkout()}
             />
             {adaptiveResult ? (
               <SectionCard title="Today's Adjustment" eyebrow="Recovery Score">
+                <View style={styles.recoveryScoreCard}>
+                  <Text style={styles.recoveryScoreValue}>{adaptiveResult.readinessScore}</Text>
+                  <View style={styles.recoveryScoreCopy}>
+                    <Text style={styles.recoveryScoreLabel}>{getReadinessLabel(adaptiveResult.readinessScore)}</Text>
+                    <Text style={styles.helperText}>Recovery Score out of 100</Text>
+                  </View>
+                </View>
                 <View style={styles.statsRow}>
-                  <StatChip label="Recovery" value={`${adaptiveResult.readinessScore}/100`} />
                   <StatChip label="Volume" value={`${Math.round(adaptiveResult.volumeAdjustment * 100)}%`} />
                   <StatChip label="Swaps" value={String(adaptiveResult.exerciseSwaps.length)} />
+                  <StatChip label="Removed" value={String(adaptiveResult.removedExercises.length)} />
                 </View>
-                <Text style={styles.copy}>{adaptiveResult.adjustmentSummary}</Text>
+                <Text style={styles.adjustmentPlain}>{getPlainAdjustment(adaptiveResult)}</Text>
+                <View style={styles.whyBox}>
+                  <Text style={styles.whyTitle}>Why this changed</Text>
+                  <Text style={styles.copy}>{getWhyChanged(adaptiveResult, dailyCheckIn)}</Text>
+                </View>
+                {adaptiveResult.exerciseSwaps.length ? (
+                  <View style={styles.changeList}>
+                    <Text style={styles.changeListTitle}>Swapped today</Text>
+                    {adaptiveResult.exerciseSwaps.map((swap) => (
+                      <Text key={`${swap.from}-${swap.to}`} style={styles.noteItem}>
+                        • {swap.from} to {swap.to}: {swap.reason}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+                {adaptiveResult.removedExercises.length ? (
+                  <View style={styles.changeList}>
+                    <Text style={styles.changeListTitle}>Removed today</Text>
+                    {adaptiveResult.removedExercises.map((exerciseName) => (
+                      <Text key={exerciseName} style={styles.noteItem}>
+                        • {exerciseName}: lower-priority work removed for recovery or time.
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
                 <Text style={styles.copy}>{adaptiveResult.coachMessage}</Text>
                 {adaptiveResult.safetyFlags.map((flag) => (
                   <Text key={flag} style={styles.noteItem}>• {flag}</Text>
                 ))}
               </SectionCard>
             ) : null}
+            {adaptiveError ? (
+              <SectionCard title="Adaptive workout not ready" eyebrow="Try again">
+                <Text style={styles.copy}>{adaptiveError}</Text>
+                <PrimaryButton label="Try again" onPress={() => void handleGenerateAdaptiveWorkout()} variant="ghost" />
+              </SectionCard>
+            ) : null}
           </>
-        ) : null}
+        ) : (
+          <SectionCard title="No workout today" eyebrow="Recovery day">
+            <Text style={styles.copy}>
+              No lifting session is scheduled for this program day. Recovery is part of the plan, so use this slot for easy walking, mobility, or full rest.
+            </Text>
+          </SectionCard>
+        )}
 
         <SectionCard title="Plan notes" eyebrow="How to use this week">
           {plan.notes.map((note) => (
@@ -933,6 +1033,64 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 15,
     lineHeight: 22,
+  },
+  helperText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  adjustmentPlain: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 23,
+  },
+  recoveryScoreCard: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  recoveryScoreValue: {
+    color: colors.primarySoft,
+    fontSize: 44,
+    fontWeight: "900",
+    lineHeight: 50,
+  },
+  recoveryScoreCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  recoveryScoreLabel: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  whyBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  whyTitle: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  changeList: {
+    gap: spacing.xs,
+  },
+  changeListTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
   },
   programMetaRow: {
     gap: spacing.xs,
