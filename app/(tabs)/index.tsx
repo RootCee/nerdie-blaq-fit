@@ -89,6 +89,14 @@ function formatCompactNumber(value: number) {
   }).format(value);
 }
 
+function formatHealthMetricValue(value: number, isLoading: boolean, suffix = "") {
+  if (isLoading) {
+    return "...";
+  }
+
+  return `${formatCompactNumber(value)}${suffix}`;
+}
+
 function resolveActivityStatus(steps: number, activeCalories: number, workoutsCompleted: number) {
   if (workoutsCompleted >= 2 || steps >= 12000 || activeCalories >= 800) {
     return "High activity";
@@ -540,15 +548,15 @@ export default function HomeScreen() {
               <View style={styles.healthStatsRow}>
                 <View style={styles.healthMetric}>
                   <Text style={styles.progressLabel}>Steps Today</Text>
-                  <Text style={styles.healthValue}>{formatCompactNumber(healthData.steps)}</Text>
+                  <Text style={styles.healthValue}>{formatHealthMetricValue(healthData.steps, isHealthLoading)}</Text>
                 </View>
                 <View style={styles.healthMetric}>
                   <Text style={styles.progressLabel}>Active Calories</Text>
-                  <Text style={styles.healthValue}>{formatCompactNumber(healthData.activeCalories)}</Text>
+                  <Text style={styles.healthValue}>{formatHealthMetricValue(healthData.activeCalories, isHealthLoading, " kcal")}</Text>
                 </View>
                 <View style={styles.healthMetric}>
                   <Text style={styles.progressLabel}>Workouts Completed</Text>
-                  <Text style={styles.healthValue}>{healthData.workoutsCompleted}</Text>
+                  <Text style={styles.healthValue}>{isHealthLoading ? "..." : healthData.workoutsCompleted}</Text>
                 </View>
               </View>
 

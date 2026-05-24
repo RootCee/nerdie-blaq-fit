@@ -323,7 +323,9 @@ function getActiveEnergySamples(options: HealthInputOptions) {
   return new Promise<HealthValue[]>((resolve) => {
     try {
       AppleHealthKit.getActiveEnergyBurned(options, (error, results) => {
-        if (error || !Array.isArray(results)) {
+        const normalizedResults = normalizeHealthValueResults(results);
+
+        if (error || !normalizedResults.length) {
           console.log("[HealthKit] getActiveEnergyBurned result.", {
             sampleCount: 0,
             error: error ? formatHealthKitError(error) : null,
@@ -334,10 +336,10 @@ function getActiveEnergySamples(options: HealthInputOptions) {
         }
 
         console.log("[HealthKit] getActiveEnergyBurned result.", {
-          sampleCount: results.length,
+          sampleCount: normalizedResults.length,
           error: null,
         });
-        resolve(results);
+        resolve(normalizedResults);
       });
     } catch (error) {
       console.log("[HealthKit] getActiveEnergyBurned threw.", {
@@ -347,6 +349,18 @@ function getActiveEnergySamples(options: HealthInputOptions) {
       resolve([]);
     }
   });
+}
+
+function normalizeHealthValueResults(results: unknown): HealthValue[] {
+  if (Array.isArray(results)) {
+    return results.filter((sample): sample is HealthValue => typeof sample?.value === "number");
+  }
+
+  if (results && typeof results === "object" && typeof (results as HealthValue).value === "number") {
+    return [results as HealthValue];
+  }
+
+  return [];
 }
 
 function getWorkoutSamples(options: HealthInputOptions) {

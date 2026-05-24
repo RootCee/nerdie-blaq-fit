@@ -114,6 +114,18 @@ function trimProgramDayTitle(title: string) {
   return title.includes(":") ? title.split(":").slice(1).join(":").trim() : title;
 }
 
+function getTodayActionCopy(hasAdaptiveWorkout: boolean, hasWorkoutToday: boolean) {
+  if (!hasWorkoutToday) {
+    return "Today is a recovery slot. Keep the calendar handy and let recovery do its job.";
+  }
+
+  if (hasAdaptiveWorkout) {
+    return "Your readiness check-in is connected to today's workout. Review the adjustment, then start the session.";
+  }
+
+  return "Choose your path, complete readiness, then generate today's adjusted workout before you train.";
+}
+
 function buildScheduledPlan(plan: WorkoutPlan, planStartDate = startOfProgramWeek(new Date()).toISOString()): WorkoutPlan {
   const startDate = startOfLocalDay(new Date(planStartDate));
   const today = startOfLocalDay(new Date());
@@ -620,6 +632,10 @@ export default function WorkoutScreen() {
   const estimatedCompletionLabel = formatShortDate(plan.estimatedCompletionDate);
   const planStartLabel = formatShortDate(plan.planStartDate);
   const selectedDayExercises = selectedDay ? getGroupedExercises(selectedDay) : [];
+  const todaysPlannedWorkout = weekSlots[todayProgramIndex]?.workoutDay ?? null;
+  const todaysWorkout = adaptiveResult?.adjustedWorkout ?? todaysPlannedWorkout;
+  const hasAdaptiveWorkout = Boolean(adaptiveResult);
+  const todayActionCopy = getTodayActionCopy(hasAdaptiveWorkout, Boolean(todaysPlannedWorkout));
   const selectedDayStatus = selectedSlot?.isRestDay
     ? "Rest Day"
     : selectedSlot?.completed
@@ -630,15 +646,9 @@ export default function WorkoutScreen() {
 
   return (
     <>
-      <Screen title="Session" subtitle="Your current training week, built from your saved profile and setup.">
-        <SectionCard title={plan.title} eyebrow="Current Plan">
-          <Text style={styles.copy}>{plan.summary}</Text>
-          <View style={styles.statsRow}>
-            <StatChip label="Days" value={String(plan.trainingDays)} />
-            <StatChip label="Goal" value={plan.goal.replace("-", " ")} />
-            <StatChip label="Location" value={plan.location} />
-            <StatChip label="Level" value={plan.experience} />
-          </View>
+      <Screen title="Session" subtitle="Pick the path, check readiness, then train the right version of today.">
+        <SectionCard title="Today's training flow" eyebrow="Path + readiness">
+          <Text style={styles.copy}>{todayActionCopy}</Text>
           <View style={styles.pathSelector}>
             <Text style={styles.pathSelectorTitle}>Training path</Text>
             {!profile.trainingPathId ? (
@@ -677,94 +687,8 @@ export default function WorkoutScreen() {
               Beast Path is a Pro path. Foundation stays active until Pro is unlocked.
             </Text>
           ) : null}
-          <View style={styles.programMetaRow}>
-            <Text style={styles.programMetaText}>{currentWeekLabel}</Text>
-            <Text style={styles.programMetaText}>
-              Program day {plan.currentProgramDay ?? 1} of 7
-            </Text>
-            {planStartLabel ? <Text style={styles.programMetaText}>Started {planStartLabel}</Text> : null}
-            {estimatedCompletionLabel ? <Text style={styles.programMetaText}>Estimated finish {estimatedCompletionLabel}</Text> : null}
-          </View>
-          <PrimaryButton
-            label={isRegenerating ? "Refreshing plan..." : "Refresh plan"}
-            onPress={() => void handleRegeneratePlan()}
-            variant="ghost"
-          />
-          <PrimaryButton
-            label="View Full Program Calendar"
-            onPress={() => {
-              if (isPro) {
-                setIsCalendarOpen(true);
-                return;
-              }
 
-              openPaywall("full program calendar");
-            }}
-            variant="ghost"
-          />
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        </SectionCard>
-
-        {!isPro && wantsBlaqMass ? (
-          <ProLockCard
-            title="Beast Path"
-            description="Golden-Era Inspired AI Bodybuilding, AI adaptive adjustments, advanced recovery score, progression analytics, and coach messages are Pro features."
-            feature="Beast Path"
-          />
-        ) : null}
-
-        {!isPro ? (
-          <ProLockCard
-            title="Advanced Program Calendar"
-            description="Weekly tracking stays free. Upgrade to Pro to see the full multi-week program calendar."
-            feature="advanced calendar"
-          />
-        ) : null}
-
-        <SectionCard title={currentWeekLabel} eyebrow="Weekly tracker">
-          <View style={styles.weekTrackerRow}>
-            {weekSlots.map((slot) => {
-              const isSelected = selectedSlot?.index === slot.index;
-              const isToday = todayProgramIndex === slot.index;
-              const isLocked = !isPro && !isToday;
-              const cardStyles = [
-                styles.weekDayCard,
-                slot.isRestDay ? styles.restDayCard : null,
-                slot.completed ? styles.completedDayCard : null,
-                isToday ? styles.todayDayCard : null,
-                isSelected ? styles.selectedDayCard : null,
-                isLocked ? styles.lockedDayCard : null,
-              ];
-
-              return (
-                <Pressable
-                  key={`${slot.label}-${slot.index}`}
-                  onPress={() => {
-                    if (isLocked) {
-                      openPaywall("weekly workout days");
-                      return;
-                    }
-
-                    setSelectedProgramDay(slot.index);
-                    setIsDayDetailOpen(true);
-                  }}
-                  style={cardStyles}
-                >
-                  <Text style={styles.weekDayLabel}>{slot.label}</Text>
-                  <Text style={styles.weekDayDate}>{slot.date.getDate()}</Text>
-                  <Text style={styles.weekDayTitle} numberOfLines={2}>
-                    {slot.workoutDay ? trimProgramDayTitle(slot.workoutDay.title) : "Rest / Recovery Day"}
-                  </Text>
-                  <Text style={styles.weekDayStatus}>
-                    {isLocked ? "Locked" : slot.isRestDay ? "Rest Day" : slot.completed ? "Done" : isToday ? "Today" : "Not Done"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </SectionCard>
-
-        {selectedDay ? (
+          {todaysPlannedWorkout ? (
           <>
             <DailyReadinessCheckIn
               value={dailyCheckIn}
@@ -826,12 +750,109 @@ export default function WorkoutScreen() {
             ) : null}
           </>
         ) : (
-          <SectionCard title="No workout today" eyebrow="Recovery day">
-            <Text style={styles.copy}>
-              No lifting session is scheduled for this program day. Recovery is part of the plan, so use this slot for easy walking, mobility, or full rest.
-            </Text>
-          </SectionCard>
+          <Text style={styles.copy}>
+            No lifting session is scheduled for this program day. Recovery is part of the plan, so use this slot for easy walking, mobility, or full rest.
+          </Text>
         )}
+          {todaysWorkout ? (
+            <PrimaryButton
+              label={dayLogs[todaysWorkout.id]?.isCompleted ? "Update Today's Session" : "Start Today's Session"}
+              onPress={() => handleStartSessionFromDayDetail(todaysWorkout.id)}
+            />
+          ) : null}
+        </SectionCard>
+
+        <SectionCard title={plan.title} eyebrow="Program calendar">
+          <Text style={styles.copy}>{plan.summary}</Text>
+          <View style={styles.statsRow}>
+            <StatChip label="Days" value={String(plan.trainingDays)} />
+            <StatChip label="Goal" value={plan.goal.replace("-", " ")} />
+            <StatChip label="Location" value={plan.location} />
+            <StatChip label="Level" value={plan.experience} />
+          </View>
+          <View style={styles.programMetaRow}>
+            <Text style={styles.programMetaText}>{currentWeekLabel}</Text>
+            <Text style={styles.programMetaText}>
+              Program day {plan.currentProgramDay ?? 1} of 7
+            </Text>
+            {planStartLabel ? <Text style={styles.programMetaText}>Started {planStartLabel}</Text> : null}
+            {estimatedCompletionLabel ? <Text style={styles.programMetaText}>Estimated finish {estimatedCompletionLabel}</Text> : null}
+          </View>
+          <View style={styles.weekTrackerRow}>
+            {weekSlots.map((slot) => {
+              const isSelected = selectedSlot?.index === slot.index;
+              const isToday = todayProgramIndex === slot.index;
+              const isLocked = !isPro && !isToday;
+              const cardStyles = [
+                styles.weekDayCard,
+                slot.isRestDay ? styles.restDayCard : null,
+                slot.completed ? styles.completedDayCard : null,
+                isToday ? styles.todayDayCard : null,
+                isSelected ? styles.selectedDayCard : null,
+                isLocked ? styles.lockedDayCard : null,
+              ];
+
+              return (
+                <Pressable
+                  key={`${slot.label}-${slot.index}`}
+                  onPress={() => {
+                    if (isLocked) {
+                      openPaywall("weekly workout days");
+                      return;
+                    }
+
+                    setSelectedProgramDay(slot.index);
+                    setIsDayDetailOpen(true);
+                  }}
+                  style={cardStyles}
+                >
+                  <Text style={styles.weekDayLabel}>{slot.label}</Text>
+                  <Text style={styles.weekDayDate}>{slot.date.getDate()}</Text>
+                  <Text style={styles.weekDayTitle} numberOfLines={2}>
+                    {slot.workoutDay ? trimProgramDayTitle(slot.workoutDay.title) : "Rest / Recovery Day"}
+                  </Text>
+                  <Text style={styles.weekDayStatus}>
+                    {isLocked ? "Locked" : slot.isRestDay ? "Rest Day" : slot.completed ? "Done" : isToday ? "Today" : "Not Done"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <PrimaryButton
+            label={isRegenerating ? "Refreshing plan..." : "Refresh plan"}
+            onPress={() => void handleRegeneratePlan()}
+            variant="ghost"
+          />
+          <PrimaryButton
+            label="View Full Program Calendar"
+            onPress={() => {
+              if (isPro) {
+                setIsCalendarOpen(true);
+                return;
+              }
+
+              openPaywall("full program calendar");
+            }}
+            variant="ghost"
+          />
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        </SectionCard>
+
+        {!isPro && wantsBlaqMass ? (
+          <ProLockCard
+            title="Beast Path"
+            description="Golden-Era Inspired AI Bodybuilding, AI adaptive adjustments, advanced recovery score, progression analytics, and coach messages are Pro features."
+            feature="Beast Path"
+          />
+        ) : null}
+
+        {!isPro ? (
+          <ProLockCard
+            title="Advanced Program Calendar"
+            description="Weekly tracking stays free. Upgrade to Pro to see the full multi-week program calendar."
+            feature="advanced calendar"
+          />
+        ) : null}
 
         <SectionCard title="Plan notes" eyebrow="How to use this week">
           {plan.notes.map((note) => (
@@ -879,6 +900,13 @@ export default function WorkoutScreen() {
                 <Text style={styles.calendarCloseText}>X</Text>
               </Pressable>
             </View>
+
+            {selectedDay ? (
+              <PrimaryButton
+                label={selectedSlot?.completed ? "Update Session" : "Start Session"}
+                onPress={() => handleStartSessionFromDayDetail(selectedDay.id)}
+              />
+            ) : null}
 
             <ScrollView contentContainerStyle={styles.calendarScrollContent}>
               {selectedDay ? (
