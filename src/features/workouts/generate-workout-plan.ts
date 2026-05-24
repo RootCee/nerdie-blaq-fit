@@ -1,3 +1,4 @@
+import { getTrainingPathById, TrainingPathConfig, TrainingPathId } from "@/config/trainingPaths";
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
 import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
 import { parseWeightInPounds } from "@/lib/body-metrics";
@@ -604,7 +605,20 @@ function buildSplitDays(
     },
   );
 
-  return [upperOne, lowerOne, upperTwo, lowerTwo, conditioning].slice(0, trainingDays);
+  const bodybuildingBridge = buildDay(
+    "day-6",
+    "Day 6: Bodybuilding Pump",
+    "Chest, back, delts, and arms",
+    "A controlled bridge into higher frequency work. Keep this pump-focused and leave the heavy grinding to the main days.",
+    [
+      exercise(pick(library.chest, 1), "3", "10-12", "60 sec", "Controlled reps and no forced range."),
+      exercise(pick(library.back, 1), "3", "10-12", "60 sec", "Drive the elbows and keep the torso steady."),
+      exercise(pick(library.shoulders, 2), "2-3", "12-15", "45 sec", "Strict raises with clean control."),
+      exercise(pick(library.arms, 1), "2-3", "10-14", "45 sec", "Chase tension, not sloppy load."),
+    ],
+  );
+
+  return [upperOne, lowerOne, upperTwo, lowerTwo, conditioning, bodybuildingBridge].slice(0, trainingDays);
 }
 
 type AdvancedIntensityPhase = "base" | "burnout" | "tempo";
@@ -824,6 +838,7 @@ export function canGenerateWorkoutPlan(input: WorkoutPlannerInput): boolean {
 
 interface GenerateWorkoutPlanOptions {
   enableBlaqMass?: boolean;
+  trainingPathId?: TrainingPathId | null;
 }
 
 export function generateWorkoutPlan(
@@ -841,10 +856,12 @@ export function generateWorkoutPlan(
   const activityLevel = input.activityLevel!;
   const equipment = input.availableEquipment;
   const goalPace = input.goalPace ?? "steady";
+  const selectedTrainingPath = getTrainingPathById(options.trainingPathId);
   const useAdvancedBodybuildingSplit =
     options.enableBlaqMass === true &&
+    selectedTrainingPath.id === "beast" &&
     goal === "muscle-gain" &&
-    experience === "advanced" &&
+    (experience === "advanced" || experience === "intermediate") &&
     location === "gym";
   const defaultTrainingDays = resolveTrainingDays(
     goal,
@@ -854,7 +871,9 @@ export function generateWorkoutPlan(
     input.weight,
     input.goalWeight,
   );
-  const trainingDays = useAdvancedBodybuildingSplit ? 6 : defaultTrainingDays;
+  const trainingDays = useAdvancedBodybuildingSplit
+    ? 6
+    : resolvePathTrainingDays(selectedTrainingPath, defaultTrainingDays, completedWorkoutCount);
   const weekIndex = resolveWeekIndex();
   const library = buildExerciseLibrary(location, equipment);
   const days = useAdvancedBodybuildingSplit
@@ -888,10 +907,10 @@ export function generateWorkoutPlan(
     weekIndex,
     completedWorkoutCount,
     advancedIntensityPhase: intensityPhase,
-    programLengthWeeks: useAdvancedBodybuildingSplit ? 16 : 8,
+    programLengthWeeks: selectedTrainingPath.id === "foundation" ? 12 : useAdvancedBodybuildingSplit ? 16 : 8,
     title:
       useAdvancedBodybuildingSplit
-        ? "Blaq Mass System v1"
+        ? "Beast Path: Golden-Era Inspired AI Bodybuilding"
         : goal === "fat-loss"
         ? "Lean & Athletic Week"
         : goal === "muscle-gain"
@@ -899,7 +918,7 @@ export function generateWorkoutPlan(
           : "Strong Foundations Week",
     summary:
       useAdvancedBodybuildingSplit
-        ? "High-volume advanced muscle-building protocol with rotating Blaq Core work."
+        ? "6-day training. Daily adaptation. Zero guesswork."
         : goal === "fat-loss"
         ? "A balanced weekly structure with strength work, short core finishers, and steady conditioning support."
         : goal === "muscle-gain"
@@ -916,8 +935,8 @@ export function generateWorkoutPlan(
       "Keep 1-2 reps in reserve on most sets unless an exercise note says otherwise.",
       "If an exercise bothers a joint, swap it for a similar movement pattern and pain-free range.",
       "Supersets pair two lighter movements back to back before resting.",
-      useAdvancedBodybuildingSplit
-        ? "This is high-volume advanced training. Keep sessions around 60-75 minutes, recover hard, and scale loads before pushing failure."
+      selectedTrainingPath.id === "beast"
+        ? "Built for serious lifters with Foundation paths if you are earning your way up. Keep sessions around 60-75 minutes and scale loads before pushing failure."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
       useAdvancedBodybuildingSplit
         ? "Abs rotate deterministically from the front-core and oblique pools on every training day in this split."
@@ -936,4 +955,34 @@ export function generateWorkoutPlan(
     ],
     days,
   };
+}
+
+function resolvePathTrainingDays(path: TrainingPathConfig, defaultTrainingDays: number, completedWorkoutCount: number) {
+  if (path.id === "foundation") {
+    const estimatedWeek = Math.floor(completedWorkoutCount / 3);
+
+    if (estimatedWeek >= 10) {
+      return 6;
+    }
+
+    if (estimatedWeek >= 8) {
+      return 5;
+    }
+
+    if (estimatedWeek >= 4) {
+      return 4;
+    }
+
+    return 3;
+  }
+
+  if (path.id === "athlete" || path.id === "maintenance") {
+    return 4;
+  }
+
+  if (path.id === "beast") {
+    return 6;
+  }
+
+  return defaultTrainingDays;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -11,6 +11,7 @@ import { MultiSelectChips, OptionChips } from "@/components/ui/OptionChips";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { TRAINING_PATHS, getTrainingPathGuidance, recommendTrainingPath } from "@/config/trainingPaths";
 import { parseHeightInMeters, parseWeightInPounds } from "@/lib/body-metrics";
 import {
   activityLevelOptions,
@@ -127,6 +128,13 @@ export default function OnboardingScreen() {
   const bmiSummary = useMemo(() => calculateBmi(profile.height, profile.weight), [profile.height, profile.weight]);
   const currentStepErrors = useMemo(() => validateStep(profile, step), [profile, step]);
   const isCurrentStepValid = Object.keys(currentStepErrors).length === 0;
+  const trainingPathGuidance = useMemo(() => getTrainingPathGuidance(profile), [profile]);
+
+  useEffect(() => {
+    if (!profile.trainingPathId && profile.workoutExperience && profile.fitnessGoal) {
+      updateProfile({ trainingPathId: recommendTrainingPath(profile) });
+    }
+  }, [profile, updateProfile]);
 
   const stepTitle = useMemo(() => {
     switch (step) {
@@ -299,6 +307,15 @@ export default function OnboardingScreen() {
               onChange={(value) => updateProfile({ workoutExperience: value })}
             />
             {currentStepErrors.workoutExperience ? <Text style={styles.inlineError}>{currentStepErrors.workoutExperience}</Text> : null}
+          </View>
+          <View style={styles.group}>
+            <Text style={styles.label}>Training path</Text>
+            <OptionChips
+              options={TRAINING_PATHS.map((path) => ({ label: path.title.replace(" Path", ""), value: path.id }))}
+              value={profile.trainingPathId}
+              onChange={(value) => updateProfile({ trainingPathId: value })}
+            />
+            <Text style={styles.helperText}>{trainingPathGuidance}</Text>
           </View>
         </SectionCard>
       ) : null}

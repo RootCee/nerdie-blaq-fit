@@ -3,8 +3,10 @@ import { ActivityIndicator, Modal, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { OptionChips } from "@/components/ui/OptionChips";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { TRAINING_PATHS, getTrainingPathById, getTrainingPathGuidance } from "@/config/trainingPaths";
 import { deleteCurrentAccount } from "@/lib/account-deletion";
 import { mapProfileToSupabaseRow } from "@/lib/onboarding-persistence";
 import {
@@ -24,7 +26,7 @@ function formatProvider(provider: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { isComplete, profile, clearProfileState, resetProfile, storageMode, error, refreshProfile } = useOnboardingStore();
+  const { isComplete, profile, updateProfile, saveProfile, clearProfileState, resetProfile, storageMode, error, refreshProfile, isSaving } = useOnboardingStore();
   const { isPro, isPremiumOverride, status: subscriptionStatus, refreshSubscription } = useSubscription();
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [isLinking, setIsLinking] = useState<"apple" | "google" | null>(null);
@@ -139,6 +141,7 @@ export default function ProfileScreen() {
           <Text style={styles.item}>Height: {profile.height || "Not set"}</Text>
           <Text style={styles.item}>Weight: {profile.weight || "Not set"}</Text>
           <Text style={styles.item}>Goal: {profile.fitnessGoal ?? "Not set"}</Text>
+          <Text style={styles.item}>Training path: {getTrainingPathById(profile.trainingPathId).title}</Text>
           <Text style={styles.item}>
             Equipment: {profile.availableEquipment.join(", ") || "Not set"}
           </Text>
@@ -147,6 +150,24 @@ export default function ProfileScreen() {
           </Text>
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
+      </SectionCard>
+
+      <SectionCard title="Training path" eyebrow="Adaptive system">
+        <Text style={styles.copy}>
+          Golden-Era Inspired AI Bodybuilding is the premium lane, with Foundation paths if you are earning your way up.
+        </Text>
+        <OptionChips
+          options={TRAINING_PATHS.map((path) => ({ label: path.title.replace(" Path", ""), value: path.id }))}
+          value={profile.trainingPathId}
+          onChange={(value) => updateProfile({ trainingPathId: value })}
+        />
+        <Text style={styles.item}>{getTrainingPathGuidance(profile)}</Text>
+        <PrimaryButton
+          label={isSaving ? "Saving path..." : "Save Training Path"}
+          onPress={() => void saveProfile(profile)}
+          disabled={isSaving}
+          variant="ghost"
+        />
       </SectionCard>
 
       {sessionStatus === null ? (

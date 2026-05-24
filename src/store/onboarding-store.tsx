@@ -12,6 +12,7 @@ interface OnboardingStoreValue extends OnboardingState {
   updateProfile: (updates: Partial<OnboardingProfile>) => void;
   clearProfileState: () => void;
   resetProfile: () => Promise<void>;
+  saveProfile: (profileOverride?: OnboardingProfile) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -121,7 +122,64 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
   }, []);
 
   const value = useMemo<OnboardingStoreValue>(
-    () => ({
+    () => {
+      const saveProfile = async (profileOverride = state.profile, onboardingCompleted = state.isComplete) => {
+        if (!persistenceConfig.isConfigured || !supabase) {
+          setState((current) => ({
+            ...current,
+            profile: profileOverride,
+            isComplete: onboardingCompleted,
+            storageMode: "local",
+            error: null,
+          }));
+          return;
+        }
+
+        const session = await ensureSupabaseSession();
+        const userId = session?.user?.id ?? authenticatedUserId;
+
+        if (!userId) {
+          throw new Error("Unable to resolve the authenticated Supabase user.");
+        }
+
+        setState((current) => ({
+          ...current,
+          isSaving: true,
+          storageMode: "supabase",
+          error: null,
+        }));
+
+        const payload = mapProfileToSupabaseRow(
+          userId,
+          profileOverride,
+          onboardingCompleted,
+        );
+
+        const { error } = await supabase
+          .from("profiles")
+          .upsert(payload as Record<string, unknown>, { onConflict: "id" });
+
+        if (error) {
+          setState((current) => ({
+            ...current,
+            isSaving: false,
+            storageMode: "supabase",
+            error: "We couldn't save your setup right now. Please try again in a moment.",
+          }));
+          throw error;
+        }
+
+        setState((current) => ({
+          ...current,
+          profile: profileOverride,
+          isComplete: onboardingCompleted,
+          isSaving: false,
+          storageMode: "supabase",
+          error: null,
+        }));
+      };
+
+      return ({
       ...state,
       updateProfile: (updates) =>
         setState((current) => ({
@@ -175,61 +233,11 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
           error: null,
         }));
       },
-      completeOnboarding: async () => {
-        if (!persistenceConfig.isConfigured || !supabase) {
-          setState((current) => ({
-            ...current,
-            isComplete: true,
-            storageMode: "local",
-            error: null,
-          }));
-          return;
-        }
-
-        const session = await ensureSupabaseSession();
-        const userId = session?.user?.id ?? authenticatedUserId;
-
-        if (!userId) {
-          throw new Error("Unable to resolve the authenticated Supabase user.");
-        }
-
-        setState((current) => ({
-          ...current,
-          isSaving: true,
-          storageMode: "supabase",
-          error: null,
-        }));
-
-        const payload = mapProfileToSupabaseRow(
-          userId,
-          state.profile,
-          true,
-        );
-
-        const { error } = await supabase
-          .from("profiles")
-          .upsert(payload as Record<string, unknown>, { onConflict: "id" });
-
-        if (error) {
-          setState((current) => ({
-            ...current,
-            isSaving: false,
-            storageMode: "supabase",
-            error: "We couldn't save your setup right now. Please try again in a moment.",
-          }));
-          throw error;
-        }
-
-        setState((current) => ({
-          ...current,
-          isComplete: true,
-          isSaving: false,
-          storageMode: "supabase",
-          error: null,
-        }));
-      },
+      saveProfile: async (profileOverride) => saveProfile(profileOverride),
+      completeOnboarding: async () => saveProfile(state.profile, true),
       refreshProfile,
-    }),
+    });
+    },
     [authenticatedUserId, persistenceConfig.isConfigured, state],
   );
 
