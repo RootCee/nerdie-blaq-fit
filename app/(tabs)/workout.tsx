@@ -3,11 +3,14 @@ import { ActivityIndicator, InteractionManager, Modal, Pressable, ScrollView, St
 import { router, useFocusEffect } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { DailyReadinessCheckIn } from "@/components/workouts/DailyReadinessCheckIn";
 import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
+import { TRAINING_PATHS, getTrainingPathById, recommendTrainingPath } from "@/config/trainingPaths";
 import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
+import { createDefaultDailyCheckIn, loadDailyCheckIn, saveDailyCheckIn } from "@/features/workouts/daily-checkin-persistence";
 import { generateWorkoutPlan } from "@/features/workouts/generate-workout-plan";
 import { countCompletedWorkoutDays, deleteAllWorkoutDayLogs, loadWorkoutDayLogs } from "@/features/workouts/workout-log-persistence";
 import {
@@ -16,10 +19,13 @@ import {
   saveWorkoutPlan,
 } from "@/features/workouts/workout-plan-persistence";
 import { getOnboardingPersistenceConfig } from "@/lib/supabase";
+import { adaptWorkoutWithGeminiCoach } from "@/lib/ai/geminiTrainingCoach";
+import { AdaptiveTrainingResult, adaptWorkoutForReadiness } from "@/lib/adaptiveTraining";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 import { GroupedWorkoutExerciseDisplay, WorkoutDay, WorkoutDayLog, WorkoutPlan } from "@/types/workout";
+import { DailyReadinessCheckIn as DailyReadinessCheckInValue } from "@/types/readiness";
 
 const PROGRAM_WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -167,13 +173,18 @@ function buildProgramCalendar(plan: WorkoutPlan, dayLogs: Record<string, Workout
 }
 
 export default function WorkoutScreen() {
-  const { profile, isComplete } = useOnboardingStore();
+  const { profile, isComplete, updateProfile, saveProfile } = useOnboardingStore();
   const { isPro } = useSubscription();
   const [completedWorkoutCount, setCompletedWorkoutCount] = useState(0);
-  const wantsBlaqMass = profile.fitnessGoal === "muscle-gain" && profile.workoutExperience === "advanced" && profile.workoutLocation === "gym";
+  const selectedTrainingPath = getTrainingPathById(profile.trainingPathId ?? recommendTrainingPath(profile));
+  const effectiveTrainingPath = selectedTrainingPath.proRequired && !isPro ? getTrainingPathById("foundation") : selectedTrainingPath;
+  const wantsBlaqMass = selectedTrainingPath.id === "beast";
   const generatedPlan = useMemo(
-    () => generateWorkoutPlan(profile, completedWorkoutCount, { enableBlaqMass: isPro }),
-    [completedWorkoutCount, isPro, profile],
+    () => generateWorkoutPlan(profile, completedWorkoutCount, {
+      enableBlaqMass: isPro,
+      trainingPathId: effectiveTrainingPath.id,
+    }),
+    [completedWorkoutCount, effectiveTrainingPath.id, isPro, profile],
   );
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [dayLogs, setDayLogs] = useState<Record<string, WorkoutDayLog>>({});
@@ -184,6 +195,9 @@ export default function WorkoutScreen() {
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [dailyCheckIn, setDailyCheckIn] = useState<DailyReadinessCheckInValue>(() => createDefaultDailyCheckIn());
+  const [adaptiveResult, setAdaptiveResult] = useState<AdaptiveTrainingResult | null>(null);
+  const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const persistenceConfig = getOnboardingPersistenceConfig();
   const scheduledGeneratedPlan = useMemo(
@@ -388,6 +402,26 @@ export default function WorkoutScreen() {
     }, [refreshDayLogs]),
   );
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateDailyCheckIn() {
+      const today = new Date().toISOString().slice(0, 10);
+      const savedCheckIn = await loadDailyCheckIn(today);
+
+      if (isMounted) {
+        setDailyCheckIn(savedCheckIn ?? createDefaultDailyCheckIn());
+        setAdaptiveResult(null);
+      }
+    }
+
+    void hydrateDailyCheckIn();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleRegeneratePlan = async () => {
     if (!scheduledGeneratedPlan) {
       return;
@@ -418,6 +452,54 @@ export default function WorkoutScreen() {
       setError(replaceError instanceof Error ? replaceError.message : "Unable to replace the current workout plan.");
     } finally {
       setIsRegenerating(false);
+    }
+  };
+
+  const handleTrainingPathSelect = async (pathId: typeof selectedTrainingPath.id) => {
+    const nextProfile = { ...profile, trainingPathId: pathId };
+    updateProfile({ trainingPathId: pathId });
+    setAdaptiveResult(null);
+
+    try {
+      await saveProfile(nextProfile);
+    } catch {
+      // Profile save errors are already surfaced by the onboarding store.
+    }
+  };
+
+  const handleGenerateAdaptiveWorkout = async () => {
+    if (!plan) {
+      return;
+    }
+
+    const todayIndex = Math.min(Math.max((plan.currentProgramDay ?? 1) - 1, 0), 6);
+    const todayWorkout = buildProgramWeekSlots(plan, dayLogs, plan.currentWeekIndex ?? 0)[todayIndex]?.workoutDay;
+
+    if (!todayWorkout) {
+      setAdaptiveResult(null);
+      return;
+    }
+
+    setIsSavingCheckIn(true);
+
+    try {
+      const savedCheckIn = await saveDailyCheckIn(dailyCheckIn);
+      setDailyCheckIn(savedCheckIn);
+      const adaptationInput = {
+        profile,
+        selectedTrainingPath: effectiveTrainingPath,
+        plannedWorkout: todayWorkout,
+        checkIn: savedCheckIn,
+      };
+      const result = isPro
+        ? await adaptWorkoutWithGeminiCoach(adaptationInput)
+        : adaptWorkoutForReadiness(adaptationInput);
+      setAdaptiveResult(result);
+      setSelectedProgramDay(todayIndex);
+    } catch (checkInError) {
+      setError(checkInError instanceof Error ? checkInError.message : "Unable to generate today's adaptive workout.");
+    } finally {
+      setIsSavingCheckIn(false);
     }
   };
 
@@ -478,8 +560,11 @@ export default function WorkoutScreen() {
   const weekSlots = buildProgramWeekSlots(plan, dayLogs, trackerWeekIndex);
   const programCalendar = buildProgramCalendar(plan, dayLogs);
   const selectedSlot = weekSlots[selectedProgramDay] ?? weekSlots[0];
-  const selectedDay = selectedSlot?.workoutDay ?? null;
   const todayProgramIndex = Math.min(Math.max((plan.currentProgramDay ?? 1) - 1, 0), 6);
+  const plannedSelectedDay = selectedSlot?.workoutDay ?? null;
+  const selectedDay = adaptiveResult && selectedProgramDay === todayProgramIndex
+    ? adaptiveResult.adjustedWorkout
+    : plannedSelectedDay;
   const currentWeekLabel = `Week ${(plan.currentWeekIndex ?? 0) + 1} of ${plan.programLengthWeeks ?? 8}`;
   const estimatedCompletionLabel = formatShortDate(plan.estimatedCompletionDate);
   const planStartLabel = formatShortDate(plan.planStartDate);
@@ -503,6 +588,39 @@ export default function WorkoutScreen() {
             <StatChip label="Location" value={plan.location} />
             <StatChip label="Level" value={plan.experience} />
           </View>
+          <View style={styles.pathSelector}>
+            <Text style={styles.pathSelectorTitle}>Training path</Text>
+            <View style={styles.pathGrid}>
+              {TRAINING_PATHS.map((path) => {
+                const isSelected = selectedTrainingPath.id === path.id;
+                const isLocked = path.proRequired && !isPro;
+
+                return (
+                  <Pressable
+                    key={path.id}
+                    onPress={() => {
+                      if (isLocked) {
+                        openPaywall(path.title);
+                        return;
+                      }
+
+                      void handleTrainingPathSelect(path.id);
+                    }}
+                    style={[styles.pathCard, isSelected ? styles.pathCardSelected : null, isLocked ? styles.lockedDayCard : null]}
+                  >
+                    <Text style={styles.pathTitle}>{path.title}</Text>
+                    <Text style={styles.pathSubtitle}>{isLocked ? "Pro" : path.subtitle}</Text>
+                    <Text style={styles.pathDescription} numberOfLines={3}>{path.description}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          {selectedTrainingPath.proRequired && !isPro ? (
+            <Text style={styles.programMetaText}>
+              Beast Path is a Pro path. Foundation stays active until Pro is unlocked.
+            </Text>
+          ) : null}
           <View style={styles.programMetaRow}>
             <Text style={styles.programMetaText}>{currentWeekLabel}</Text>
             <Text style={styles.programMetaText}>
@@ -533,9 +651,9 @@ export default function WorkoutScreen() {
 
         {!isPro && wantsBlaqMass ? (
           <ProLockCard
-            title="Blaq Mass System v1"
-            description="Your free plan stays active, but the high-volume Blaq Mass advanced muscle-building protocol is a Pro feature."
-            feature="Blaq Mass System v1"
+            title="Beast Path"
+            description="Golden-Era Inspired AI Bodybuilding, AI adaptive adjustments, advanced recovery score, progression analytics, and coach messages are Pro features."
+            feature="Beast Path"
           />
         ) : null}
 
@@ -589,6 +707,31 @@ export default function WorkoutScreen() {
             })}
           </View>
         </SectionCard>
+
+        {selectedDay ? (
+          <>
+            <DailyReadinessCheckIn
+              value={dailyCheckIn}
+              isSaving={isSavingCheckIn}
+              onChange={setDailyCheckIn}
+              onSubmit={() => void handleGenerateAdaptiveWorkout()}
+            />
+            {adaptiveResult ? (
+              <SectionCard title="Today's Adjustment" eyebrow="Recovery Score">
+                <View style={styles.statsRow}>
+                  <StatChip label="Recovery" value={`${adaptiveResult.readinessScore}/100`} />
+                  <StatChip label="Volume" value={`${Math.round(adaptiveResult.volumeAdjustment * 100)}%`} />
+                  <StatChip label="Swaps" value={String(adaptiveResult.exerciseSwaps.length)} />
+                </View>
+                <Text style={styles.copy}>{adaptiveResult.adjustmentSummary}</Text>
+                <Text style={styles.copy}>{adaptiveResult.coachMessage}</Text>
+                {adaptiveResult.safetyFlags.map((flag) => (
+                  <Text key={flag} style={styles.noteItem}>• {flag}</Text>
+                ))}
+              </SectionCard>
+            ) : null}
+          </>
+        ) : null}
 
         <SectionCard title="Plan notes" eyebrow="How to use this week">
           {plan.notes.map((note) => (
@@ -804,6 +947,49 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
+  },
+  pathSelector: {
+    gap: spacing.sm,
+  },
+  pathSelectorTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  pathGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  pathCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexGrow: 1,
+    gap: 4,
+    minWidth: 140,
+    padding: spacing.sm,
+    width: "46%",
+  },
+  pathCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  pathTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  pathSubtitle: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  pathDescription: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   loadingState: {
     alignItems: "flex-start",
