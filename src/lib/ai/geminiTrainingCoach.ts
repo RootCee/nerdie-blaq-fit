@@ -1,4 +1,5 @@
 import { AdaptiveTrainingInput, AdaptiveTrainingResult, adaptWorkoutForReadiness, ExerciseSwap } from "@/lib/adaptiveTraining";
+import { ensureSupabaseSession, getSupabaseConfig, supabase } from "@/lib/supabase";
 
 export interface GeminiTrainingCoachJson {
   readinessScore: number;
@@ -10,18 +11,15 @@ export interface GeminiTrainingCoachJson {
   safetyFlags: string[];
 }
 
-const GEMINI_MODEL = "gemini-1.5-flash";
-
 export async function adaptWorkoutWithGeminiCoach(input: AdaptiveTrainingInput): Promise<AdaptiveTrainingResult> {
   const fallback = adaptWorkoutForReadiness(input);
-  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY?.trim();
 
-  if (!apiKey) {
+  if (!getSupabaseConfig().isConfigured || !supabase) {
     return fallback;
   }
 
   try {
-    const geminiJson = await requestGeminiAdaptation(input, apiKey);
+    const geminiJson = await requestGeminiAdaptation(input);
 
     return {
       ...fallback,
@@ -41,67 +39,25 @@ export async function adaptWorkoutWithGeminiCoach(input: AdaptiveTrainingInput):
   }
 }
 
-async function requestGeminiAdaptation(input: AdaptiveTrainingInput, apiKey: string): Promise<GeminiTrainingCoachJson> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.2,
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: buildPrompt(input),
-              },
-            ],
-          },
-        ],
-      }),
+async function requestGeminiAdaptation(input: AdaptiveTrainingInput): Promise<GeminiTrainingCoachJson> {
+  const session = await ensureSupabaseSession();
+
+  if (!session?.access_token || !supabase) {
+    throw new Error("Supabase session is not available for Gemini coach.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("gemini-training-coach", {
+    body: input,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
     },
-  );
+  });
 
-  if (!response.ok) {
-    throw new Error(`Gemini training coach failed with ${response.status}.`);
+  if (error) {
+    throw new Error(error.message || "Gemini training coach function failed.");
   }
 
-  const payload = await response.json();
-  const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (typeof text !== "string") {
-    throw new Error("Gemini training coach did not return JSON text.");
-  }
-
-  return JSON.parse(text) as GeminiTrainingCoachJson;
-}
-
-function buildPrompt(input: AdaptiveTrainingInput) {
-  return [
-    "You are an AI bodybuilding plan adapter for Nerdie Blaq Fit.",
-    "Only adapt today's plan. Do not assess injuries, provide health claims, or replace the whole workout.",
-    "Preserve the training path, target muscles, compounds, and progression philosophy.",
-    "Return strict JSON with exactly these fields: readinessScore, volumeAdjustment, exerciseSwaps, removedExercises, coachingCues, coachMessage, safetyFlags.",
-    "Use readinessScore 0-100 and volumeAdjustment 0.5-1.0.",
-    "If joint pain is mentioned, suggest safer exercise swaps and include a safety flag telling the user to consider safer alternatives, use pain-free range, and stop if pain worsens.",
-    JSON.stringify({
-      selectedTrainingPath: input.selectedTrainingPath,
-      profile: {
-        fitnessGoal: input.profile.fitnessGoal,
-        workoutExperience: input.profile.workoutExperience,
-        workoutLocation: input.profile.workoutLocation,
-        injuriesOrLimitations: input.profile.injuriesOrLimitations,
-      },
-      checkIn: input.checkIn,
-      plannedWorkout: input.plannedWorkout,
-    }),
-  ].join("\n");
+  return data as GeminiTrainingCoachJson;
 }
 
 function buildGeminiSummary(json: GeminiTrainingCoachJson, fallbackSummary: string) {
