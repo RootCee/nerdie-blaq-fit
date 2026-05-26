@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { AppleHealthInfo } from "@/components/AppleHealthInfo";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -10,6 +10,9 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { deriveBodyWeightHistorySummary } from "@/features/body-weight/body-weight-history";
 import { loadRecentBodyWeightHistory } from "@/features/body-weight/body-weight-persistence";
+import { calculateFoodLogDailyTotals, loadFoodLogsForDate } from "@/features/nutrition/food-log-persistence";
+import { loadSupplementLogsForDate } from "@/features/nutrition/supplement-log-persistence";
+import { loadWorkoutHistory } from "@/features/workouts/workout-log-persistence";
 import { calculateBmi, parseWeightInKilograms, parseWeightInPounds } from "@/lib/body-metrics";
 import {
   type HealthKitWeightSample,
@@ -206,6 +209,14 @@ export default function HomeScreen() {
     activeCalories: 0,
     workoutsCompleted: 0,
   });
+  const [appWorkoutsCompletedToday, setAppWorkoutsCompletedToday] = useState(0);
+  const [nutritionData, setNutritionData] = useState({
+    foodCalories: 0,
+    supplementCalories: 0,
+    proteinG: 0,
+    carbsG: 0,
+    fatG: 0,
+  });
   const todaysFocusQuote = useMemo(() => {
     const now = new Date();
     const startOfYear = new Date(now.getFullYear(), 0, 0);
@@ -320,6 +331,63 @@ export default function HomeScreen() {
     };
   }, [isPro]);
 
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      async function hydrateAppDailyData() {
+        const today = formatDateKey(new Date());
+
+        try {
+          const [foodLogs, supplementLogs, workoutHistory] = await Promise.all([
+            loadFoodLogsForDate(today),
+            loadSupplementLogsForDate(today),
+            loadWorkoutHistory(),
+          ]);
+          const foodTotals = calculateFoodLogDailyTotals(foodLogs);
+          const supplementTotals = supplementLogs.reduce(
+            (totals, entry) => ({
+              calories: totals.calories + entry.calories,
+              proteinG: totals.proteinG + entry.proteinG,
+              carbsG: totals.carbsG + entry.carbsG,
+              fatG: totals.fatG + entry.fatG,
+            }),
+            { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+          );
+          const workoutsToday = workoutHistory.filter((item) => formatDateKey(new Date(item.completedAt)) === today).length;
+
+          if (isMounted) {
+            setNutritionData({
+              foodCalories: Math.round(foodTotals.calories),
+              supplementCalories: Math.round(supplementTotals.calories),
+              proteinG: Math.round(foodTotals.proteinG + supplementTotals.proteinG),
+              carbsG: Math.round(foodTotals.carbsG + supplementTotals.carbsG),
+              fatG: Math.round(foodTotals.fatG + supplementTotals.fatG),
+            });
+            setAppWorkoutsCompletedToday(workoutsToday);
+          }
+        } catch {
+          if (isMounted) {
+            setNutritionData({
+              foodCalories: 0,
+              supplementCalories: 0,
+              proteinG: 0,
+              carbsG: 0,
+              fatG: 0,
+            });
+            setAppWorkoutsCompletedToday(0);
+          }
+        }
+      }
+
+      void hydrateAppDailyData();
+
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
+
   const currentWeightPounds = useMemo(() => parseWeightInPounds(profile.weight), [profile.weight]);
   const goalWeightPounds = useMemo(() => parseWeightInPounds(profile.goalWeight), [profile.goalWeight]);
   const shouldAdoptHealthWeight = useMemo(
@@ -358,9 +426,12 @@ export default function HomeScreen() {
   );
   const weeklyChange = bodyWeightSummary.weeklyChange ?? null;
   const activityStatus = useMemo(
-    () => resolveActivityStatus(healthData.steps, healthData.activeCalories, healthData.workoutsCompleted),
-    [healthData.activeCalories, healthData.steps, healthData.workoutsCompleted],
+    () => resolveActivityStatus(healthData.steps, healthData.activeCalories, Math.max(healthData.workoutsCompleted, appWorkoutsCompletedToday)),
+    [appWorkoutsCompletedToday, healthData.activeCalories, healthData.steps, healthData.workoutsCompleted],
   );
+  const totalLoggedCalories = nutritionData.foodCalories + nutritionData.supplementCalories;
+  const netLoggedCalories = totalLoggedCalories - healthData.activeCalories;
+  const workoutsCompletedToday = Math.max(healthData.workoutsCompleted, appWorkoutsCompletedToday);
 
   const handleRecalibrateHealthData = async (options?: { suppressUnauthorizedError?: boolean }) => {
     setIsHealthLoading(true);
@@ -528,6 +599,31 @@ export default function HomeScreen() {
         <MedicalNotice includeBmiSources />
       </SectionCard>
 
+      <SectionCard title="Today's Nutrition" eyebrow="Manual food log">
+        <View style={styles.healthStatsRow}>
+          <View style={styles.healthMetric}>
+            <Text style={styles.progressLabel}>Food Calories</Text>
+            <Text style={styles.healthValue}>{formatHealthMetricValue(nutritionData.foodCalories, false, " cal")}</Text>
+          </View>
+          <View style={styles.healthMetric}>
+            <Text style={styles.progressLabel}>Add-ons</Text>
+            <Text style={styles.healthValue}>{formatHealthMetricValue(nutritionData.supplementCalories, false, " cal")}</Text>
+          </View>
+          <View style={styles.healthMetric}>
+            <Text style={styles.progressLabel}>Net Calories</Text>
+            <Text style={styles.healthValue}>{formatHealthMetricValue(netLoggedCalories, false, " cal")}</Text>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <StatChip label="Protein" value={`${nutritionData.proteinG}g`} />
+          <StatChip label="Carbs" value={`${nutritionData.carbsG}g`} />
+          <StatChip label="Fat" value={`${nutritionData.fatG}g`} />
+        </View>
+        <Text style={styles.copy}>
+          These totals come from your manual Food Log and Supplement Log. Net subtracts Apple Health active calories when Health Sync is connected.
+        </Text>
+      </SectionCard>
+
       {isPro ? (
         <SectionCard title="Apple Health Integration" eyebrow={isHealthAuthorized ? "Health Sync" : "Apple Health"}>
           <AppleHealthInfo />
@@ -556,7 +652,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.healthMetric}>
                   <Text style={styles.progressLabel}>Workouts Completed</Text>
-                  <Text style={styles.healthValue}>{isHealthLoading ? "..." : healthData.workoutsCompleted}</Text>
+                  <Text style={styles.healthValue}>{isHealthLoading ? "..." : workoutsCompletedToday}</Text>
                 </View>
               </View>
 

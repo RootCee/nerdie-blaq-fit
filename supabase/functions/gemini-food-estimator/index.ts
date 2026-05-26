@@ -7,7 +7,10 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
 };
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODELS = (Deno.env.get("GEMINI_MODEL") ?? "gemini-2.0-flash-lite,gemini-2.0-flash,gemini-2.5-flash")
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -67,8 +70,22 @@ Deno.serve(async (req) => {
 });
 
 async function requestGeminiFoodEstimate(input, apiKey) {
+  let lastError;
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      return await requestGeminiFoodEstimateWithModel(input, apiKey, model);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error("Gemini food estimate failed.");
+}
+
+async function requestGeminiFoodEstimateWithModel(input, apiKey, model) {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -94,7 +111,7 @@ async function requestGeminiFoodEstimate(input, apiKey) {
   );
 
   if (!response.ok) {
-    throw new Error(`Gemini food estimator failed with ${response.status}.`);
+    throw new Error(await buildGeminiErrorMessage(response, model));
   }
 
   const payload = await response.json();
@@ -105,6 +122,27 @@ async function requestGeminiFoodEstimate(input, apiKey) {
   }
 
   return JSON.parse(text);
+}
+
+async function buildGeminiErrorMessage(response, model) {
+  const fallback = `Gemini food estimator failed with ${response.status} using ${model}.`;
+
+  try {
+    const payload = await response.clone().json();
+    const message = payload?.error?.message;
+
+    return typeof message === "string" && message.trim()
+      ? `${fallback} ${message.trim()}`
+      : fallback;
+  } catch {
+    try {
+      const text = await response.clone().text();
+
+      return text.trim() ? `${fallback} ${text.trim().slice(0, 240)}` : fallback;
+    } catch {
+      return fallback;
+    }
+  }
 }
 
 function buildPrompt(input) {

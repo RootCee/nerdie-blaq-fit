@@ -133,11 +133,12 @@ export function adaptWorkoutForReadiness(input: AdaptiveTrainingInput): Adaptive
 
 export function calculateReadinessScore(checkIn: DailyReadinessCheckIn): number {
   const sorenessAverage = Object.values(checkIn.soreness).reduce((sum, value) => sum + value, 0) / Object.values(checkIn.soreness).length;
+  const previousSessionRpe = checkIn.previousSessionRpe <= 0 ? 7 : checkIn.previousSessionRpe;
   const sleepScore = clamp((checkIn.sleepHours / 8) * 100, 0, 100);
   const energyScore = checkIn.energyLevel * 10;
   const stressScore = 110 - checkIn.stressLevel * 10;
   const sorenessScore = 110 - sorenessAverage * 10;
-  const rpeScore = 110 - checkIn.previousSessionRpe * 10;
+  const rpeScore = 110 - previousSessionRpe * 10;
   const jointPainPenalty = checkIn.jointPainNotes.trim() ? 8 : 0;
 
   return Math.round(clamp(

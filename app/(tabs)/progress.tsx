@@ -1,7 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import * as Sharing from "expo-sharing";
+import { captureRef } from "react-native-view-shot";
 
+import {
+  ChallengeProofShareCard,
+  ChallengeProofShareCardStats,
+  SOCIAL_PROOF_STORY_HEIGHT,
+  SOCIAL_PROOF_STORY_WIDTH,
+} from "@/components/challenges/ChallengeProofShareCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { FormField } from "@/components/ui/FormField";
 import { ProLockCard } from "@/components/ProLockCard";
@@ -15,14 +23,14 @@ import { buildChallengeProofSummary, getTodayDateKey } from "@/features/challeng
 import { loadActiveChallenge, loadChallengeDailyLogs, saveChallengeDailyLog, startChallenge } from "@/features/challenges/challenge-persistence";
 import { loadDailyCheckIn } from "@/features/workouts/daily-checkin-persistence";
 import { deriveWorkoutMotivationStats } from "@/features/workouts/workout-history-stats";
-import { loadWorkoutHistory } from "@/features/workouts/workout-log-persistence";
+import { loadWorkoutDayLog, loadWorkoutHistory } from "@/features/workouts/workout-log-persistence";
 import { calculateReadinessScore } from "@/lib/adaptiveTraining";
 import { generateShareProgressText } from "@/lib/share/shareProgress";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 import { ChallengeProofSummary, MissedWorkoutReason, UserChallenge, UserChallengeDailyLog } from "@/types/challenge";
-import { WorkoutHistoryItem, WorkoutMotivationStats } from "@/types/workout";
+import { WorkoutDayLog, WorkoutHistoryItem, WorkoutMotivationStats } from "@/types/workout";
 import { BodyWeightHistorySummary } from "@/types/body-weight";
 
 const beastChallenge = getChallengeById("four-week-beast");
@@ -63,13 +71,103 @@ function hasWorkoutCompletedOnDate(history: WorkoutHistoryItem[], dateKey: strin
   return history.some((item) => getTodayDateKey(new Date(item.completedAt)) === dateKey);
 }
 
+function getStartOfWeek(date: Date) {
+  const copy = new Date(date);
+  const weekday = copy.getDay();
+  const distanceFromMonday = (weekday + 6) % 7;
+
+  copy.setHours(0, 0, 0, 0);
+  copy.setDate(copy.getDate() - distanceFromMonday);
+
+  return copy;
+}
+
+function parseLoggedNumber(value: string) {
+  const numeric = Number.parseFloat(value.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function getBestSetLabel(log: WorkoutDayLog | null) {
+  if (!log) {
+    return "No completed set yet";
+  }
+
+  let bestSet: { exerciseName: string; reps: number; weight: number; setVolume: number } | null = null;
+
+  for (const exercise of log.exerciseLogs) {
+    for (const set of exercise.sets) {
+      if (!set.isCompleted) {
+        continue;
+      }
+
+      const reps = parseLoggedNumber(set.reps);
+      const weight = parseLoggedNumber(set.weight);
+      const setVolume = reps * weight;
+
+      if (
+        !bestSet ||
+        setVolume > bestSet.setVolume ||
+        (setVolume === bestSet.setVolume && weight > bestSet.weight)
+      ) {
+        bestSet = {
+          exerciseName: exercise.exerciseName,
+          reps,
+          weight,
+          setVolume,
+        };
+      }
+    }
+  }
+
+  if (!bestSet) {
+    return "No completed set yet";
+  }
+
+  return bestSet.weight > 0
+    ? `${bestSet.exerciseName} ${bestSet.weight} x ${bestSet.reps}`
+    : `${bestSet.exerciseName} ${bestSet.reps} reps`;
+}
+
+function getWorkoutVolumeForDate(history: WorkoutHistoryItem[], dateKey: string) {
+  return history
+    .filter((item) => getTodayDateKey(new Date(item.completedAt)) === dateKey)
+    .reduce((sum, item) => sum + item.totalWorkoutVolume, 0);
+}
+
+function getWorkoutVolumeSince(history: WorkoutHistoryItem[], startDate: Date) {
+  const startTime = new Date(startDate).setHours(0, 0, 0, 0);
+
+  return history
+    .filter((item) => new Date(item.completedAt).getTime() >= startTime)
+    .reduce((sum, item) => sum + item.totalWorkoutVolume, 0);
+}
+
+function getWeeklyWorkoutVolume(history: WorkoutHistoryItem[]) {
+  return getWorkoutVolumeSince(history, getStartOfWeek(new Date()));
+}
+
+function formatWeightGoalProgress(summary: BodyWeightHistorySummary) {
+  if (summary.distanceFromGoal === null) {
+    return "Building weight trend";
+  }
+
+  if (summary.distanceFromGoal === 0) {
+    return "Goal weight reached";
+  }
+
+  const distance = Math.abs(summary.distanceFromGoal);
+  return `${distance} lb ${summary.distanceFromGoal > 0 ? "above" : "below"} goal`;
+}
+
 export default function ProgressScreen() {
   const { profile, isComplete } = useOnboardingStore();
   const { isPro } = useSubscription();
+  const shareCardRef = useRef<View>(null);
   const [history, setHistory] = useState<WorkoutHistoryItem[]>([]);
   const [challenge, setChallenge] = useState<UserChallenge | null>(null);
   const [challengeLogs, setChallengeLogs] = useState<UserChallengeDailyLog[]>([]);
   const [challengeSummary, setChallengeSummary] = useState<ChallengeProofSummary | null>(null);
+  const [bestSetToday, setBestSetToday] = useState("No completed set yet");
   const [strengthNotes, setStrengthNotes] = useState("");
   const [isMissedModalOpen, setIsMissedModalOpen] = useState(false);
   const [missedReason, setMissedReason] = useState<MissedWorkoutReason>("not-enough-time");
@@ -106,6 +204,8 @@ export default function ProgressScreen() {
             loadWorkoutHistory(),
             loadRecentBodyWeightHistory(7),
           ]);
+          const todayHistoryItem = items.find((item) => getTodayDateKey(new Date(item.completedAt)) === getTodayDateKey());
+          const todayWorkoutLog = todayHistoryItem ? await loadWorkoutDayLog(todayHistoryItem.dayId) : null;
           let activeChallenge: UserChallenge | null = null;
           let activeChallengeLogs: UserChallengeDailyLog[] = [];
           let challengeBodyWeightLogs = recentBodyWeightLogs;
@@ -141,6 +241,7 @@ export default function ProgressScreen() {
 
           if (isMounted) {
             setHistory(items);
+            setBestSetToday(getBestSetLabel(todayWorkoutLog));
             setChallenge(activeChallenge);
             setChallengeLogs(activeChallengeLogs);
             setChallengeLoadError(challengeLoadMessage);
@@ -201,6 +302,23 @@ export default function ProgressScreen() {
   const shouldShowSharePrompt = Boolean(challenge || challengeSummary);
   const shareProgressText = shouldShowSharePrompt
     ? generateShareProgressText({ fitScore: challengeSummary?.proofScore ?? null })
+    : null;
+  const shareCardStats: ChallengeProofShareCardStats | null = challenge && challengeSummary
+    ? {
+        proofScore: challengeSummary.proofScore,
+        currentDay: challengeSummary.currentDay,
+        currentWeek: challengeSummary.currentWeek,
+        completionPercentage: challengeSummary.completionPercentage,
+        todayVolume: getWorkoutVolumeForDate(history, getTodayDateKey()),
+        weeklyVolume: getWeeklyWorkoutVolume(history),
+        challengeVolume: getWorkoutVolumeSince(history, new Date(challenge.startedAt)),
+        bestSetToday,
+        streakDays: stats.currentStreak,
+        weightGoalProgress: formatWeightGoalProgress(bodyWeightSummary),
+        workoutsAccountedFor: challengeSummary.workoutsAccountedFor,
+        workoutsCompleted: challengeSummary.workoutsCompleted,
+        averageReadinessScore: challengeSummary.averageReadinessScore,
+      }
     : null;
 
   const refreshChallenge = async (activeChallenge = challenge) => {
@@ -295,6 +413,26 @@ export default function ProgressScreen() {
     }
 
     try {
+      if (shareCardStats && shareCardRef.current) {
+        const uri = await captureRef(shareCardRef, {
+          fileName: "nerdie-blaq-fit-proof-story",
+          format: "png",
+          height: SOCIAL_PROOF_STORY_HEIGHT,
+          quality: 1,
+          result: "tmpfile",
+          width: SOCIAL_PROOF_STORY_WIDTH,
+        });
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            dialogTitle: "Share your story proof",
+            mimeType: "image/png",
+            UTI: "public.png",
+          });
+          return;
+        }
+      }
+
       await Share.share({
         message: shareProgressText,
       });
@@ -367,6 +505,7 @@ export default function ProgressScreen() {
               <StatChip label="Day" value={`${challengeSummary.currentDay}/28`} />
               <StatChip label="Week" value={String(challengeSummary.currentWeek)} />
               <StatChip label="Complete" value={`${challengeSummary.completionPercentage}%`} />
+              <StatChip label="Accounted" value={String(challengeSummary.workoutsAccountedFor)} />
               <StatChip label="Workouts" value={String(challengeSummary.workoutsCompleted)} />
               <StatChip label="This week" value={String(challengeSummary.workoutsCompletedThisWeek)} />
               <StatChip label="Missed" value={String(challengeSummary.missedSessions)} />
@@ -393,9 +532,18 @@ export default function ProgressScreen() {
             {shareProgressText ? (
               <View style={styles.sharePromptCard}>
                 <Text style={styles.sharePromptTitle}>Share your proof. Show your discipline.</Text>
-                <Text style={styles.copy}>{shareProgressText}</Text>
+                {shareCardStats ? (
+                  <View ref={shareCardRef} collapsable={false} style={styles.shareCardPreview}>
+                    <ChallengeProofShareCard
+                      generatedOnLabel={new Date().toLocaleDateString()}
+                      stats={shareCardStats}
+                    />
+                  </View>
+                ) : (
+                  <Text style={styles.copy}>{shareProgressText}</Text>
+                )}
                 <PrimaryButton
-                  label="Share Progress"
+                  label={shareCardStats ? "Share Story Card" : "Share Progress"}
                   onPress={() => void handleShareProgress()}
                   disabled={isChallengeSaving}
                   variant="ghost"
@@ -704,6 +852,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.sm,
     padding: spacing.md,
+  },
+  shareCardPreview: {
+    alignSelf: "center",
+    width: "100%",
   },
   sharePromptTitle: {
     color: colors.text,

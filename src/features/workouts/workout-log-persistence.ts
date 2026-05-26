@@ -1,4 +1,5 @@
 import { ensureSupabaseSession, getAuthenticatedSupabaseUserId, getOnboardingPersistenceConfig, supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { toExerciseSlug } from "@/features/workouts/exercise-library";
 import {
   WorkoutDay,
@@ -11,6 +12,8 @@ import {
   WorkoutVolumeSummary,
   StoredWorkoutDayLogRow,
 } from "@/types/workout";
+
+const LOCAL_WORKOUT_DAY_LOGS_KEY = "nerdie-blaq-fit:workout-day-logs";
 
 interface LegacyWorkoutExerciseLog {
   exerciseSlug: string;
@@ -162,31 +165,60 @@ function mapWorkoutDayLogToStoredRow(userId: string, log: WorkoutDayLog): Omit<S
   };
 }
 
-export async function loadWorkoutDayLogs(): Promise<Record<string, WorkoutDayLog>> {
-  const config = getOnboardingPersistenceConfig();
-
-  if (!config.isConfigured || !supabase) {
-    return {};
-  }
-
-  const userId = await getAuthenticatedSupabaseUserId();
-  const { data, error } = await supabase
-    .from("user_workout_day_logs")
-    .select("*")
-    .eq("user_id", userId);
-
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as StoredWorkoutDayLogRow[];
+async function loadLocalWorkoutDayLogs(): Promise<Record<string, WorkoutDayLog>> {
+  const rawValue = await AsyncStorage.getItem(LOCAL_WORKOUT_DAY_LOGS_KEY);
+  const parsedValue = rawValue ? JSON.parse(rawValue) as Record<string, WorkoutDayLog> : {};
 
   return Object.fromEntries(
-    rows.map((row) => {
-      const log = mapStoredRowToWorkoutDayLog(row);
-      return [log.dayId, log];
-    }),
+    Object.entries(parsedValue).map(([dayId, log]) => [
+      dayId,
+      {
+        ...log,
+        exerciseLogs: log.exerciseLogs.map((entry) => normalizeExerciseLog(entry)),
+      },
+    ]),
   );
+}
+
+async function saveLocalWorkoutDayLog(log: WorkoutDayLog) {
+  const logsByDay = await loadLocalWorkoutDayLogs();
+  await AsyncStorage.setItem(LOCAL_WORKOUT_DAY_LOGS_KEY, JSON.stringify({
+    ...logsByDay,
+    [log.dayId]: log,
+  }));
+}
+
+export async function loadWorkoutDayLogs(): Promise<Record<string, WorkoutDayLog>> {
+  const config = getOnboardingPersistenceConfig();
+  const localLogs = await loadLocalWorkoutDayLogs();
+
+  if (!config.isConfigured || !supabase) {
+    return localLogs;
+  }
+
+  try {
+    const userId = await getAuthenticatedSupabaseUserId();
+    const { data, error } = await supabase
+      .from("user_workout_day_logs")
+      .select("*")
+      .eq("user_id", userId);
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data ?? []) as StoredWorkoutDayLogRow[];
+    const remoteLogs = Object.fromEntries(
+      rows.map((row) => {
+        const log = mapStoredRowToWorkoutDayLog(row);
+        return [log.dayId, log];
+      }),
+    );
+
+    return { ...localLogs, ...remoteLogs };
+  } catch {
+    return localLogs;
+  }
 }
 
 export function countCompletedWorkoutDays(logsByDay: Record<string, WorkoutDayLog>): number {
@@ -325,44 +357,54 @@ export async function loadWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
 
 export async function loadWorkoutDayLog(dayId: string): Promise<WorkoutDayLog | null> {
   const config = getOnboardingPersistenceConfig();
+  const localLog = (await loadLocalWorkoutDayLogs())[dayId] ?? null;
 
   if (!config.isConfigured || !supabase) {
-    return null;
+    return localLog;
   }
 
-  const userId = await getAuthenticatedSupabaseUserId();
-  const { data, error } = await supabase
-    .from("user_workout_day_logs")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("day_id", dayId)
-    .maybeSingle();
+  try {
+    const userId = await getAuthenticatedSupabaseUserId();
+    const { data, error } = await supabase
+      .from("user_workout_day_logs")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("day_id", dayId)
+      .maybeSingle();
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    const row = data as StoredWorkoutDayLogRow | null;
+    return row ? mapStoredRowToWorkoutDayLog(row) : localLog;
+  } catch {
+    return localLog;
   }
-
-  const row = data as StoredWorkoutDayLogRow | null;
-  return row ? mapStoredRowToWorkoutDayLog(row) : null;
 }
 
 export async function replaceWorkoutDayLog(log: WorkoutDayLog): Promise<WorkoutDayLog> {
   const config = getOnboardingPersistenceConfig();
+  await saveLocalWorkoutDayLog(log);
 
   if (!config.isConfigured || !supabase) {
     return log;
   }
 
-  await ensureSupabaseSession();
-  const userId = await getAuthenticatedSupabaseUserId();
-  const payload = mapWorkoutDayLogToStoredRow(userId, log);
+  try {
+    await ensureSupabaseSession();
+    const userId = await getAuthenticatedSupabaseUserId();
+    const payload = mapWorkoutDayLogToStoredRow(userId, log);
 
-  const { error } = await supabase
-    .from("user_workout_day_logs")
-    .upsert(payload as Record<string, unknown>, { onConflict: "user_id,day_id" });
+    const { error } = await supabase
+      .from("user_workout_day_logs")
+      .upsert(payload as Record<string, unknown>, { onConflict: "user_id,day_id" });
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+  } catch {
+    return log;
   }
 
   return log;
@@ -370,6 +412,7 @@ export async function replaceWorkoutDayLog(log: WorkoutDayLog): Promise<WorkoutD
 
 export async function deleteAllWorkoutDayLogs(): Promise<void> {
   const config = getOnboardingPersistenceConfig();
+  await AsyncStorage.removeItem(LOCAL_WORKOUT_DAY_LOGS_KEY);
 
   if (!config.isConfigured || !supabase) {
     return;

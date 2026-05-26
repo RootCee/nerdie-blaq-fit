@@ -31,6 +31,18 @@ export interface WorkoutSupersetGroup {
   notes: string;
 }
 
+export type WorkoutMuscleGroup =
+  | "full-body"
+  | "upper"
+  | "lower"
+  | "chest"
+  | "back"
+  | "shoulders"
+  | "arms"
+  | "forearms"
+  | "core"
+  | "conditioning";
+
 export interface GroupedWorkoutExerciseDisplay {
   exercise: WorkoutExercise;
   superset: WorkoutSupersetGroup | null;
@@ -42,6 +54,7 @@ export interface WorkoutDay {
   title: string;
   focus: string;
   notes: string;
+  primaryMuscleGroups?: WorkoutMuscleGroup[];
   exercises: WorkoutExercise[];
   coreFinisher?: CoreFinisherBlock | null;
   supersets?: WorkoutSupersetGroup[];

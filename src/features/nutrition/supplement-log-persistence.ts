@@ -106,6 +106,36 @@ export async function loadSupplementLogsForDate(logDate: string): Promise<Supple
   }
 }
 
+export async function loadRecentSupplementLogs(limit = 8): Promise<SupplementLogEntry[]> {
+  const config = getOnboardingPersistenceConfig();
+
+  if (!config.isConfigured || !supabase) {
+    return (await loadLocalSupplementLogs())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+
+  try {
+    const userId = await getAuthenticatedSupabaseUserId();
+    const { data, error } = await supabase
+      .from("user_supplement_logs")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw error;
+    }
+
+    return ((data ?? []) as SupplementLogRow[]).map(mapSupplementLogRow);
+  } catch {
+    return (await loadLocalSupplementLogs())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+}
+
 export async function saveSupplementLog(input: SupplementLogEntryInput): Promise<SupplementLogEntry> {
   if (!input.supplementName.trim()) {
     throw new Error("Add a supplement name before saving.");

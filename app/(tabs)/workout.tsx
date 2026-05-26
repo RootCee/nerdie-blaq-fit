@@ -18,6 +18,7 @@ import {
   replaceActiveWorkoutPlan,
   saveWorkoutPlan,
 } from "@/features/workouts/workout-plan-persistence";
+import { getScheduledWorkoutLogId, getWorkoutDayForWeekday, PROGRAM_WEEKDAY_LABELS } from "@/features/workouts/workout-schedule";
 import { getOnboardingPersistenceConfig } from "@/lib/supabase";
 import { adaptWorkoutWithGeminiCoach } from "@/lib/ai/geminiTrainingCoach";
 import { AdaptiveTrainingResult, adaptWorkoutForReadiness } from "@/lib/adaptiveTraining";
@@ -27,14 +28,15 @@ import { colors, spacing } from "@/theme";
 import { WorkoutDay, WorkoutDayLog, WorkoutExercise, WorkoutPlan, WorkoutSupersetGroup } from "@/types/workout";
 import { DailyReadinessCheckIn as DailyReadinessCheckInValue } from "@/types/readiness";
 
-const PROGRAM_WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 type ProgramTrackerSlot = {
   index: number;
+  weekIndex: number;
   label: (typeof PROGRAM_WEEKDAY_LABELS)[number];
   date: Date;
   workoutDay: WorkoutDay | null;
+  workoutLogId: string | null;
   completed: boolean;
   isRestDay: boolean;
 };
@@ -46,7 +48,7 @@ type PendingWorkoutRoute =
     }
   | {
       pathname: "/workout-session/[dayId]";
-      params: { dayId: string };
+      params: { dayId: string; weekIndex?: string };
     };
 
 type WorkoutFlowGroup = {
@@ -198,14 +200,19 @@ function buildProgramWeekSlots(plan: WorkoutPlan, dayLogs: Record<string, Workou
   const weekStart = addDays(startOfLocalDay(new Date(plan.planStartDate ?? new Date().toISOString())), weekIndex * 7);
 
   return PROGRAM_WEEKDAY_LABELS.map((label, index) => {
-    const workoutDay = index < plan.days.length ? plan.days[index] : null;
+    const workoutDay = getWorkoutDayForWeekday(plan, index);
+    const workoutLogId = workoutDay ? getScheduledWorkoutLogId(workoutDay.id, weekIndex) : null;
+    const scheduledLog = workoutLogId ? dayLogs[workoutLogId] : undefined;
+    const legacyLog = workoutDay ? dayLogs[workoutDay.id] : undefined;
 
     return {
       index,
+      weekIndex,
       label,
       date: addDays(weekStart, index),
       workoutDay,
-      completed: workoutDay ? isCompletedDuringWeek(dayLogs[workoutDay.id], weekStart) : false,
+      workoutLogId,
+      completed: workoutDay ? isCompletedDuringWeek(scheduledLog, weekStart) || isCompletedDuringWeek(legacyLog, weekStart) : false,
       isRestDay: !workoutDay,
     };
   });
@@ -479,12 +486,12 @@ export default function WorkoutScreen() {
     });
   }, [queueDayDetailNavigation]);
 
-  const handleStartSessionFromDayDetail = useCallback((dayId: string) => {
+  const handleStartSessionFromDayDetail = useCallback((dayId: string, weekIndex = plan?.currentWeekIndex ?? 0) => {
     queueDayDetailNavigation({
       pathname: "/workout-session/[dayId]",
-      params: { dayId },
+      params: { dayId, weekIndex: String(weekIndex) },
     });
-  }, [queueDayDetailNavigation]);
+  }, [plan?.currentWeekIndex, queueDayDetailNavigation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -560,7 +567,7 @@ export default function WorkoutScreen() {
     }
   };
 
-  const handleGenerateAdaptiveWorkout = async () => {
+  const handleGenerateAdaptiveWorkout = async (checkInOverride?: DailyReadinessCheckInValue) => {
     if (!plan) {
       setAdaptiveError("No workout plan is available yet. Refresh your plan and try again.");
       return;
@@ -580,7 +587,8 @@ export default function WorkoutScreen() {
     setAdaptiveError(null);
 
     try {
-      const savedCheckIn = await saveDailyCheckIn(dailyCheckIn);
+      const checkInToSave = checkInOverride ?? dailyCheckIn;
+      const savedCheckIn = await saveDailyCheckIn(checkInToSave);
       setDailyCheckIn(savedCheckIn);
       const adaptationInput = {
         profile,
@@ -679,6 +687,9 @@ export default function WorkoutScreen() {
       : isLoadingLogs
         ? "Checking..."
         : "Not Done";
+  const selectedDayLog = selectedSlot?.workoutLogId
+    ? dayLogs[selectedSlot.workoutLogId] ?? (selectedDay ? dayLogs[selectedDay.id] : undefined)
+    : selectedDay ? dayLogs[selectedDay.id] : undefined;
 
   return (
     <>
@@ -731,7 +742,7 @@ export default function WorkoutScreen() {
               isSaving={isSavingCheckIn}
               error={checkInError}
               onChange={setDailyCheckIn}
-              onSubmit={() => void handleGenerateAdaptiveWorkout()}
+              onSubmit={(checkIn) => void handleGenerateAdaptiveWorkout(checkIn)}
             />
             {adaptiveResult ? (
               <SectionCard title="Today's Adjustment" eyebrow="Recovery Score">
@@ -792,8 +803,8 @@ export default function WorkoutScreen() {
         )}
           {todaysWorkout ? (
             <PrimaryButton
-              label={dayLogs[todaysWorkout.id]?.isCompleted ? "Update Today's Session" : "Start Today's Session"}
-              onPress={() => handleStartSessionFromDayDetail(todaysWorkout.id)}
+              label={dayLogs[getScheduledWorkoutLogId(todaysWorkout.id, trackerWeekIndex)]?.isCompleted || dayLogs[todaysWorkout.id]?.isCompleted ? "Update Today's Session" : "Start Today's Session"}
+              onPress={() => handleStartSessionFromDayDetail(todaysWorkout.id, trackerWeekIndex)}
             />
           ) : null}
         </SectionCard>
@@ -927,8 +938,8 @@ export default function WorkoutScreen() {
                 </Text>
                 <Text style={styles.calendarModalStatus}>
                   {selectedDayStatus}
-                  {selectedDay && dayLogs[selectedDay.id]?.completedAt
-                    ? ` • Logged ${new Date(dayLogs[selectedDay.id].completedAt as string).toLocaleDateString()}`
+                  {selectedDayLog?.completedAt
+                    ? ` • Logged ${new Date(selectedDayLog.completedAt).toLocaleDateString()}`
                     : ""}
                 </Text>
               </View>
@@ -940,7 +951,7 @@ export default function WorkoutScreen() {
             {selectedDay ? (
               <PrimaryButton
                 label={selectedSlot?.completed ? "Update Session" : "Start Session"}
-                onPress={() => handleStartSessionFromDayDetail(selectedDay.id)}
+                onPress={() => handleStartSessionFromDayDetail(selectedDay.id, selectedSlot?.weekIndex ?? trackerWeekIndex)}
               />
             ) : null}
 
@@ -1039,7 +1050,7 @@ export default function WorkoutScreen() {
 
                   <PrimaryButton
                     label={selectedSlot?.completed ? "Update Session" : "Start Session"}
-                    onPress={() => handleStartSessionFromDayDetail(selectedDay.id)}
+                    onPress={() => handleStartSessionFromDayDetail(selectedDay.id, selectedSlot?.weekIndex ?? trackerWeekIndex)}
                   />
                 </>
               ) : (

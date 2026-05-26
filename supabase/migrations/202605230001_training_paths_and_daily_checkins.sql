@@ -1,4 +1,7 @@
 alter table public.profiles
+add column if not exists goal_weight text,
+add column if not exists goal_pace text
+check (goal_pace in ('easy', 'steady', 'aggressive')),
 add column if not exists training_path_id text
 check (training_path_id in ('foundation', 'athlete', 'maintenance', 'beast'));
 

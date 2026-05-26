@@ -1,5 +1,5 @@
 import { getChallengeById } from "@/config/challenges";
-import { buildChallengeProofSummary, calculateCompletionPercentage, calculateProofScore } from "@/features/challenges/challenge-proof";
+import { buildChallengeProofSummary, calculateAccountedWorkoutCount, calculateCompletionPercentage, calculateProofScore } from "@/features/challenges/challenge-proof";
 import { UserChallenge, UserChallengeDailyLog } from "@/types/challenge";
 
 const challengeConfig = getChallengeById("four-week-beast");
@@ -49,6 +49,20 @@ const logs: UserChallengeDailyLog[] = [
   },
 ];
 
+const missedOnlyLogs: UserChallengeDailyLog[] = [
+  {
+    id: "missed-only-log",
+    userChallengeId: activeChallenge.id,
+    logDate: "2026-05-01",
+    workoutCompleted: false,
+    missedReason: "too-sore",
+    readinessScore: 72,
+    painFlag: true,
+    strengthNotes: "",
+    createdAt: "2026-05-01T08:00:00.000Z",
+  },
+];
+
 export function validateChallengeProofBasics() {
   const summary = buildChallengeProofSummary(activeChallenge, challengeConfig, logs, [], new Date("2026-05-03T12:00:00.000Z"));
 
@@ -56,8 +70,10 @@ export function validateChallengeProofBasics() {
     startingChallengeShapeWorks: activeChallenge.status === "active" && activeChallenge.challengeId === "four-week-beast",
     completingDailyLogsWorks: logs.some((log) => log.workoutCompleted) && logs.some((log) => log.missedReason === "too-sore"),
     completionPercentageWorks: calculateCompletionPercentage(logs, challengeConfig) === 11,
+    missedWorkoutCountsAsAccounted: calculateAccountedWorkoutCount(missedOnlyLogs) === 1,
+    missedWorkoutGeneratesNoProofScore: calculateProofScore(missedOnlyLogs, challengeConfig) === 0,
     fitScoreWorks: calculateProofScore(logs, challengeConfig) > 0,
     localFallbackShapeWorks: activeChallenge.storageMode === "local",
-    summaryIncludesProofMetrics: summary.proofScore > 0 && summary.missedSessions === 1,
+    summaryIncludesProofMetrics: summary.proofScore > 0 && summary.missedSessions === 1 && summary.workoutsAccountedFor === 3,
   };
 }

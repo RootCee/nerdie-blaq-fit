@@ -16,6 +16,7 @@ import {
   replaceWorkoutDayLog,
 } from "@/features/workouts/workout-log-persistence";
 import { loadActiveWorkoutPlan } from "@/features/workouts/workout-plan-persistence";
+import { getScheduledWorkoutLogId, getWorkoutDayForWeekday } from "@/features/workouts/workout-schedule";
 import { saveCompletedWorkoutToHealthKit } from "@/lib/health";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
@@ -133,7 +134,7 @@ function deriveBestSetToday(sets: WorkoutSetLog[]): string | null {
 }
 
 export default function WorkoutSessionScreen() {
-  const params = useLocalSearchParams<{ dayId: string }>();
+  const params = useLocalSearchParams<{ dayId: string; weekIndex?: string }>();
   const { isPro, status: subscriptionStatus } = useSubscription();
   const [day, setDay] = useState<WorkoutDay | null>(null);
   const [log, setLog] = useState<WorkoutDayLog | null>(null);
@@ -186,6 +187,8 @@ export default function WorkoutSessionScreen() {
           throw new Error("This workout day could not be found in your active plan.");
         }
 
+        const requestedWeekIndex = Number.parseInt(String(params.weekIndex ?? plan.currentWeekIndex ?? 0), 10);
+        const weekIndex = Number.isFinite(requestedWeekIndex) ? Math.max(requestedWeekIndex, 0) : plan.currentWeekIndex ?? 0;
         const selectedDay = plan.days.find((entry) => entry.id === params.dayId) ?? null;
 
         if (!selectedDay) {
@@ -193,7 +196,7 @@ export default function WorkoutSessionScreen() {
         }
 
         const todayProgramIndex = getTodayProgramDayIndex(plan);
-        const todayWorkoutDay = plan.days[todayProgramIndex] ?? null;
+        const todayWorkoutDay = getWorkoutDayForWeekday(plan, todayProgramIndex);
 
         if (!isPro && selectedDay.id !== todayWorkoutDay?.id) {
           router.replace({
@@ -204,16 +207,20 @@ export default function WorkoutSessionScreen() {
         }
 
         const [existingLog, todayWeightLog, priorPerformance] = await Promise.all([
-          loadWorkoutDayLog(selectedDay.id),
+          loadWorkoutDayLog(getScheduledWorkoutLogId(selectedDay.id, weekIndex)).then((log) => log ?? loadWorkoutDayLog(selectedDay.id)),
           loadTodayBodyWeight(),
           loadMostRecentPriorExerciseLogs(
             [...selectedDay.exercises, ...(selectedDay.coreFinisher?.exercises ?? [])].map(
               (exercise) => exercise.slug ?? exercise.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
             ),
-            selectedDay.id,
+            getScheduledWorkoutLogId(selectedDay.id, weekIndex),
           ),
         ]);
-        const mergedLog = buildWorkoutDayLog(selectedDay, existingLog);
+        const mergedLog = {
+          ...buildWorkoutDayLog(selectedDay, existingLog),
+          dayId: getScheduledWorkoutLogId(selectedDay.id, weekIndex),
+          dayTitle: `Week ${weekIndex + 1}: ${selectedDay.title}`,
+        };
 
         if (isMounted) {
           setDay(selectedDay);
@@ -241,7 +248,7 @@ export default function WorkoutSessionScreen() {
     return () => {
       isMounted = false;
     };
-  }, [isPro, params.dayId, subscriptionStatus]);
+  }, [isPro, params.dayId, params.weekIndex, subscriptionStatus]);
 
   const updateExerciseNotes = (exerciseSlug: string, value: string) => {
     setLog((current) => {

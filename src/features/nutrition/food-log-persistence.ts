@@ -103,6 +103,36 @@ export async function loadFoodLogsForDate(logDate: string): Promise<FoodLogEntry
   }
 }
 
+export async function loadRecentFoodLogs(limit = 12): Promise<FoodLogEntry[]> {
+  const config = getOnboardingPersistenceConfig();
+
+  if (!config.isConfigured || !supabase) {
+    return (await loadLocalFoodLogs())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+
+  try {
+    const userId = await getAuthenticatedSupabaseUserId();
+    const { data, error } = await supabase
+      .from("user_food_logs")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw error;
+    }
+
+    return ((data ?? []) as FoodLogRow[]).map(mapFoodLogRow);
+  } catch {
+    return (await loadLocalFoodLogs())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+}
+
 export async function saveFoodLog(input: FoodLogEntryInput): Promise<FoodLogEntry> {
   if (!input.foodName.trim()) {
     throw new Error("Add a food name before saving.");

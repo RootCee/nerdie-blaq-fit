@@ -2,8 +2,10 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useSt
 
 import {
   emptyOnboardingProfile,
+  mapProfileToLegacySupabaseRow,
   mapProfileToSupabaseRow,
   mapSupabaseRowToProfile,
+  ProfileUpsertPayload,
 } from "@/lib/onboarding-persistence";
 import { ensureSupabaseSession, getOnboardingPersistenceConfig, supabase } from "@/lib/supabase";
 import { OnboardingProfile, OnboardingState, SupabaseProfileRow } from "@/types/onboarding";
@@ -18,6 +20,14 @@ interface OnboardingStoreValue extends OnboardingState {
 }
 
 const OnboardingStoreContext = createContext<OnboardingStoreValue | null>(null);
+
+const optionalProfileColumns = ["goal_weight", "goal_pace", "training_path_id"];
+
+function isMissingOptionalProfileColumnError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+
+  return optionalProfileColumns.some((column) => message.includes(column));
+}
 
 export function OnboardingStoreProvider({ children }: PropsWithChildren) {
   const persistenceConfig = getOnboardingPersistenceConfig();
@@ -123,6 +133,26 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<OnboardingStoreValue>(
     () => {
+      const upsertProfile = async (payload: ProfileUpsertPayload) => {
+        if (!supabase) {
+          return null;
+        }
+
+        const { error } = await supabase
+          .from("profiles")
+          .upsert(payload as Record<string, unknown>, { onConflict: "id" });
+
+        if (!isMissingOptionalProfileColumnError(error)) {
+          return error;
+        }
+
+        const { error: legacyError } = await supabase
+          .from("profiles")
+          .upsert(mapProfileToLegacySupabaseRow(payload) as Record<string, unknown>, { onConflict: "id" });
+
+        return legacyError;
+      };
+
       const saveProfile = async (profileOverride = state.profile, onboardingCompleted = state.isComplete) => {
         if (!persistenceConfig.isConfigured || !supabase) {
           setState((current) => ({
@@ -155,9 +185,7 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
           onboardingCompleted,
         );
 
-        const { error } = await supabase
-          .from("profiles")
-          .upsert(payload as Record<string, unknown>, { onConflict: "id" });
+        const error = await upsertProfile(payload);
 
         if (error) {
           setState((current) => ({
@@ -206,16 +234,11 @@ export function OnboardingStoreProvider({ children }: PropsWithChildren) {
             throw new Error("Unable to resolve the authenticated Supabase user.");
           }
 
-          const { error } = await supabase
-            .from("profiles")
-            .upsert(
-              mapProfileToSupabaseRow(
-                userId,
-                emptyOnboardingProfile,
-                false,
-              ) as Record<string, unknown>,
-              { onConflict: "id" },
-            );
+          const error = await upsertProfile(mapProfileToSupabaseRow(
+            userId,
+            emptyOnboardingProfile,
+            false,
+          ));
 
           if (error) {
             setState((current) => ({

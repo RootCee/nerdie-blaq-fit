@@ -17,7 +17,7 @@ export function createDefaultDailyCheckIn(date = new Date()): DailyReadinessChec
     soreness: DEFAULT_SORENESS,
     jointPainNotes: "",
     timeAvailableMinutes: 60,
-    previousSessionRpe: 7,
+    previousSessionRpe: 0,
     stressLevel: 5,
     storageMode: "local",
   };
@@ -38,7 +38,7 @@ function mapRowToCheckIn(row: DailyReadinessCheckInRow): DailyReadinessCheckIn {
     energyLevel: row.energy_level ?? 7,
     stressLevel: row.stress_level ?? 5,
     timeAvailableMinutes: row.time_available_minutes ?? 60,
-    previousSessionRpe: row.previous_session_rpe ?? 7,
+    previousSessionRpe: row.previous_session_rpe ?? 0,
     soreness: normalizeSoreness(row.soreness),
     jointPainNotes: row.joint_pain_notes ?? "",
     storageMode: "supabase",

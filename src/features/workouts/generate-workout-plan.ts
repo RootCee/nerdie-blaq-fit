@@ -1,6 +1,7 @@
 import { getTrainingPathById, TrainingPathConfig, TrainingPathId } from "@/config/trainingPaths";
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
 import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
+import { getWorkoutDayForWeekday, PROGRAM_WEEKDAY_LABELS } from "@/features/workouts/workout-schedule";
 import { parseWeightInPounds } from "@/lib/body-metrics";
 import {
   CoreFinisherBlock,
@@ -8,6 +9,7 @@ import {
   SupportedWorkoutGoal,
   WorkoutDay,
   WorkoutExercise,
+  WorkoutMuscleGroup,
   WorkoutPlan,
   WorkoutPlannerInput,
   WorkoutSupersetGroup,
@@ -33,6 +35,12 @@ type ExerciseLibrary = {
   legs: string[];
   frontAbs: string[];
   obliques: string[];
+};
+
+export type WorkoutPlanStructureIssue = {
+  severity: "error" | "warning";
+  message: string;
+  dayId?: string;
 };
 
 function normalizeGoal(goal: FitnessGoal | null): SupportedWorkoutGoal {
@@ -414,6 +422,37 @@ function createSupersetGroup(
   };
 }
 
+function uniqueValues<T>(values: T[]) {
+  return Array.from(new Set(values));
+}
+
+function uniqueMuscleGroups(groups: WorkoutMuscleGroup[]) {
+  return uniqueValues(groups);
+}
+
+function inferPrimaryMuscleGroups(title: string, focus: string, exercises: WorkoutExercise[]): WorkoutMuscleGroup[] {
+  const text = `${title} ${focus} ${exercises.map((entry) => entry.name).join(" ")}`.toLowerCase();
+
+  if (text.includes("full body")) return ["full-body"];
+  if (text.includes("conditioning")) return ["conditioning", "core"];
+  if (text.includes("chest") && text.includes("back")) return ["chest", "back", "core"];
+  if (text.includes("shoulder") && (text.includes("arm") || text.includes("forearm"))) return ["shoulders", "arms", "forearms", "core"];
+  if (text.includes("upper")) return ["upper", "core"];
+  if (text.includes("lower") || text.includes("leg") || text.includes("squat") || text.includes("hinge")) return ["lower", "core"];
+  if (text.includes("pump")) return ["chest", "back", "shoulders", "arms"];
+
+  const groups: WorkoutMuscleGroup[] = [];
+
+  if (/bench|chest|push-up|fly|dip/.test(text)) groups.push("chest");
+  if (/row|pull-up|pulldown|back|pullover/.test(text)) groups.push("back");
+  if (/shoulder|press|raise|delt|upright/.test(text)) groups.push("shoulders");
+  if (/curl|tricep|skullcrusher|arm/.test(text)) groups.push("arms");
+  if (/wrist|forearm/.test(text)) groups.push("forearms");
+  if (/squat|deadlift|lunge|leg|calf|glute|hinge/.test(text)) groups.push("lower");
+
+  return groups.length ? uniqueMuscleGroups([...groups, "core"]) : ["full-body"];
+}
+
 function buildDay(
   id: string,
   title: string,
@@ -430,10 +469,88 @@ function buildDay(
     title,
     focus,
     notes,
+    primaryMuscleGroups: inferPrimaryMuscleGroups(title, focus, exercises),
     exercises,
     coreFinisher: options?.coreFinisher ?? null,
     supersets: options?.supersets ?? [],
   };
+}
+
+function getMeaningfulMuscleGroups(day: WorkoutDay) {
+  return (day.primaryMuscleGroups ?? inferPrimaryMuscleGroups(day.title, day.focus, day.exercises))
+    .filter((group) => group !== "core" && group !== "conditioning" && group !== "forearms");
+}
+
+export function validateWorkoutPlanStructure(plan: WorkoutPlan): WorkoutPlanStructureIssue[] {
+  const issues: WorkoutPlanStructureIssue[] = [];
+
+  if (plan.days.length !== plan.trainingDays) {
+    issues.push({
+      severity: "error",
+      message: `Expected ${plan.trainingDays} workout days but generated ${plan.days.length}.`,
+    });
+  }
+
+  plan.days.forEach((day) => {
+    if (!day.exercises.length) {
+      issues.push({
+        severity: "error",
+        dayId: day.id,
+        message: `${day.title} has no main exercises.`,
+      });
+    }
+
+    const mainSlugs = day.exercises.map((entry) => entry.slug ?? toExerciseSlug(entry.name));
+    const duplicateSlugs = mainSlugs.filter((slug, index) => mainSlugs.indexOf(slug) !== index);
+
+    if (duplicateSlugs.length) {
+      issues.push({
+        severity: "warning",
+        dayId: day.id,
+        message: `${day.title} repeats ${uniqueValues(duplicateSlugs).join(", ")} in the main exercise list.`,
+      });
+    }
+
+    const knownSlugs = new Set([
+      ...mainSlugs,
+      ...(day.coreFinisher?.exercises ?? []).map((entry) => entry.slug ?? toExerciseSlug(entry.name)),
+    ]);
+
+    (day.supersets ?? []).forEach((superset) => {
+      const missingSlugs = superset.exerciseSlugs.filter((slug) => !knownSlugs.has(slug));
+
+      if (missingSlugs.length) {
+        issues.push({
+          severity: "error",
+          dayId: day.id,
+          message: `${superset.title} references missing exercises: ${missingSlugs.join(", ")}.`,
+        });
+      }
+    });
+  });
+
+  for (let weekdayIndex = 1; weekdayIndex < PROGRAM_WEEKDAY_LABELS.length; weekdayIndex += 1) {
+    const previousDay = getWorkoutDayForWeekday(plan, weekdayIndex - 1);
+    const currentDay = getWorkoutDayForWeekday(plan, weekdayIndex);
+
+    if (!previousDay || !currentDay) {
+      continue;
+    }
+
+    const previousGroups = getMeaningfulMuscleGroups(previousDay);
+    const currentGroups = getMeaningfulMuscleGroups(currentDay);
+    const overlap = currentGroups.filter((group) => previousGroups.includes(group));
+
+    if (overlap.includes("full-body") || overlap.length > 0) {
+      issues.push({
+        severity: "warning",
+        dayId: currentDay.id,
+        message: `${PROGRAM_WEEKDAY_LABELS[weekdayIndex - 1]} and ${PROGRAM_WEEKDAY_LABELS[weekdayIndex]} both target ${overlap.join(", ")}.`,
+      });
+    }
+  }
+
+  return issues;
 }
 
 function buildFullBodyDays(
@@ -681,7 +798,7 @@ function buildAdvancedBodybuildingDays(
   const rest = "60-90 sec";
   const intensityPhase = resolveAdvancedIntensityPhase(completedWorkoutCount);
   const chestPressVariation = resolveBiweeklyVariation(
-    ["Incline bench press", "Decline bench press", "Barbell bench press"],
+    ["Incline bench press", "Decline bench press", "Dumbbell bench press"],
     weekIndex,
   );
   const squatVariation = resolveBiweeklyVariation(
@@ -902,7 +1019,7 @@ export function generateWorkoutPlan(
     });
   }
 
-  return {
+  const plan: WorkoutPlan = {
     version: WORKOUT_PLAN_VERSION,
     weekIndex,
     completedWorkoutCount,
@@ -955,6 +1072,16 @@ export function generateWorkoutPlan(
     ],
     days,
   };
+
+  if (__DEV__) {
+    const structureIssues = validateWorkoutPlanStructure(plan);
+
+    if (structureIssues.length) {
+      console.warn("[workout-generator] plan structure issues", structureIssues);
+    }
+  }
+
+  return plan;
 }
 
 function resolvePathTrainingDays(path: TrainingPathConfig, defaultTrainingDays: number, completedWorkoutCount: number) {

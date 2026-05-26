@@ -3,7 +3,7 @@
     "name": "Nerdie Blaq Fit",
     "slug": "nerdie-blaq-fit",
     "scheme": "nerdieblaqfit",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "jsEngine": "hermes",
@@ -24,7 +24,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.rootcee.nerdieblaq.fit",
-      "buildNumber": "35",
+      "buildNumber": "44",
       "supportsTablet": false,
       "requireFullScreen": true,
       "entitlements": {

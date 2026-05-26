@@ -1,5 +1,7 @@
 import { OnboardingProfile, SupabaseProfileRow } from "@/types/onboarding";
 
+export type ProfileUpsertPayload = Omit<SupabaseProfileRow, "created_at" | "updated_at">;
+
 export const emptyOnboardingProfile: OnboardingProfile = {
   age: "",
   sex: null,
@@ -21,7 +23,7 @@ export function mapProfileToSupabaseRow(
   profileId: string,
   profile: OnboardingProfile,
   onboardingCompleted: boolean,
-): Omit<SupabaseProfileRow, "created_at" | "updated_at"> {
+): ProfileUpsertPayload {
   return {
     id: profileId,
     age: profile.age || null,
@@ -40,6 +42,17 @@ export function mapProfileToSupabaseRow(
     injuries_or_limitations: profile.injuriesOrLimitations || null,
     onboarding_completed: onboardingCompleted,
   };
+}
+
+export function mapProfileToLegacySupabaseRow(payload: ProfileUpsertPayload) {
+  const {
+    goal_weight: _goalWeight,
+    goal_pace: _goalPace,
+    training_path_id: _trainingPathId,
+    ...legacyPayload
+  } = payload;
+
+  return legacyPayload;
 }
 
 export function mapSupabaseRowToProfile(row: SupabaseProfileRow): OnboardingProfile {

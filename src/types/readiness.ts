@@ -35,10 +35,10 @@ export interface DailyReadinessCheckInRow {
 }
 
 export const DEFAULT_SORENESS: MuscleGroupSoreness = {
-  chest: 3,
-  back: 3,
-  shoulders: 3,
-  arms: 3,
-  legs: 3,
-  core: 3,
+  chest: 0,
+  back: 0,
+  shoulders: 0,
+  arms: 0,
+  legs: 0,
+  core: 0,
 };

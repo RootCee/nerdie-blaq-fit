@@ -17,6 +17,10 @@ export function calculateCompletionPercentage(logs: UserChallengeDailyLog[], con
   return Math.min(Math.round((loggedDays / config.durationDays) * 100), 100);
 }
 
+export function calculateAccountedWorkoutCount(logs: UserChallengeDailyLog[]) {
+  return logs.filter((log) => log.workoutCompleted || log.missedReason).length;
+}
+
 export function calculateCheckInStreak(logs: UserChallengeDailyLog[], now = new Date()) {
   const loggedDates = new Set(logs.filter((log) => log.readinessScore !== null).map((log) => log.logDate));
   let cursor = startOfLocalDay(now);
@@ -31,21 +35,22 @@ export function calculateCheckInStreak(logs: UserChallengeDailyLog[], now = new 
 }
 
 export function calculateProofScore(logs: UserChallengeDailyLog[], config: ChallengeConfig) {
+  const pointEligibleLogs = logs.filter((log) => log.workoutCompleted);
   const completed = logs.filter((log) => log.workoutCompleted).length;
   const missed = logs.filter((log) => !log.workoutCompleted && log.missedReason).length;
-  const loggedDays = new Set(logs.map((log) => log.logDate)).size;
-  const checkInDays = logs.filter((log) => log.readinessScore !== null).length;
-  const painFlags = logs.filter((log) => log.painFlag).length;
-  const strengthNotes = logs.filter((log) => log.strengthNotes.trim()).length;
-  const readinessScores = logs
+  const completedDays = new Set(pointEligibleLogs.map((log) => log.logDate)).size;
+  const checkInDays = pointEligibleLogs.filter((log) => log.readinessScore !== null).length;
+  const painFlags = pointEligibleLogs.filter((log) => log.painFlag).length;
+  const strengthNotes = pointEligibleLogs.filter((log) => log.strengthNotes.trim()).length;
+  const readinessScores = pointEligibleLogs
     .map((log) => log.readinessScore)
     .filter((score): score is number => typeof score === "number");
   const readinessImproved = readinessScores.length >= 4 && readinessScores[readinessScores.length - 1] >= readinessScores[0];
 
-  const consistencyScore = (loggedDays / config.durationDays) * 28;
+  const consistencyScore = (completedDays / config.durationDays) * 28;
   const workoutScore = Math.min(completed / Math.max(completed + missed, 1), 1) * 26;
   const checkInScore = (checkInDays / config.durationDays) * 18;
-  const painManagementScore = Math.max(0, 1 - painFlags / Math.max(loggedDays, 1)) * 12;
+  const painManagementScore = completedDays > 0 ? Math.max(0, 1 - painFlags / completedDays) * 12 : 0;
   const overloadScore = Math.min(strengthNotes / 8, 1) * 12;
   const readinessScore = readinessImproved ? 4 : 0;
 
@@ -69,6 +74,7 @@ export function buildChallengeProofSummary(
     currentDay,
     currentWeek: Math.ceil(currentDay / 7),
     completionPercentage: calculateCompletionPercentage(logs, config),
+    workoutsAccountedFor: calculateAccountedWorkoutCount(logs),
     workoutsCompleted: logs.filter((log) => log.workoutCompleted).length,
     workoutsCompletedThisWeek: logs.filter((log) => log.workoutCompleted && startOfLocalDay(new Date(log.logDate)) >= weekStart).length,
     missedSessions: logs.filter((log) => !log.workoutCompleted && log.missedReason).length,

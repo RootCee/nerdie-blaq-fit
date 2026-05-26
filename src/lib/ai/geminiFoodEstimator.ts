@@ -35,6 +35,55 @@ function normalizeEstimate(
   };
 }
 
+function getErrorMessageFromPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as { error?: unknown; message?: unknown };
+  const message = typeof record.error === "string"
+    ? record.error
+    : typeof record.message === "string"
+      ? record.message
+      : null;
+
+  return message?.trim() || null;
+}
+
+async function getFunctionErrorMessage(error: unknown) {
+  const fallback = error instanceof Error && error.message.trim()
+    ? error.message
+    : "AI food estimate failed.";
+  const response = typeof error === "object" && error !== null && "context" in error
+    ? (error as { context?: unknown }).context
+    : null;
+
+  if (response instanceof Response) {
+    try {
+      const payload = await response.clone().json();
+      const message = getErrorMessageFromPayload(payload);
+
+      if (message) {
+        return message;
+      }
+    } catch {
+      try {
+        const text = await response.clone().text();
+
+        if (text.trim()) {
+          return text.trim();
+        }
+      } catch {
+        // Keep the original Supabase Functions error below.
+      }
+    }
+  }
+
+  return fallback === "Edge Function returned a non-2xx status code"
+    ? "AI food estimate failed. Check the food estimator Edge Function configuration."
+    : fallback;
+}
+
 export async function estimateFoodNutritionWithGemini(
   input: FoodNutritionEstimateInput,
 ): Promise<FoodNutritionEstimate> {
@@ -64,7 +113,7 @@ export async function estimateFoodNutritionWithGemini(
   });
 
   if (error) {
-    throw new Error(error.message || "AI food estimate failed.");
+    throw new Error(await getFunctionErrorMessage(error));
   }
 
   return normalizeEstimate(input, data as Partial<FoodNutritionEstimate>);
