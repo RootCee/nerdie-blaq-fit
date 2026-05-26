@@ -585,28 +585,119 @@ export default function WorkoutSessionScreen() {
     );
   };
 
+  const renderSupersetSetExercise = (exercise: WorkoutExercise, setNumber: number) => {
+    const exerciseSlug = exercise.slug ?? toExerciseSlug(exercise.name);
+    const exerciseLog = log.exerciseLogs.find((entry) => entry.exerciseSlug === exerciseSlug);
+    const set = exerciseLog?.sets.find((item) => item.setNumber === setNumber) ?? null;
+
+    if (!set) {
+      return null;
+    }
+
+    return (
+      <View key={`${exerciseSlug}-superset-set-${setNumber}`} style={styles.pairedExerciseSetCard}>
+        <View style={styles.pairedExerciseHeader}>
+          <Pressable onPress={() => handleExercisePress(exercise.name, exercise.slug)} style={styles.exerciseHeaderButton}>
+            <Text style={styles.exerciseCardTitle}>{exercise.displayName ?? getExerciseDisplayName(exercise.name) ?? exercise.name}</Text>
+            <Text style={styles.exerciseLink}>View movement notes</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: set.isCompleted }}
+            onPress={() => updateSetLog(exerciseSlug, set.setNumber, "isCompleted", !set.isCompleted)}
+            style={[styles.statusPill, set.isCompleted ? styles.statusPillActive : null]}
+          >
+            <Text style={[styles.statusPillText, set.isCompleted ? styles.statusPillTextActive : null]}>
+              {set.isCompleted ? "Done" : "Complete"}
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.helperText}>Target: {exercise.sets} x {exercise.reps}</Text>
+        <View style={styles.pairedInputGrid}>
+          <FormField
+            label="Reps"
+            value={set.reps}
+            onChangeText={(value) => updateSetLog(exerciseSlug, set.setNumber, "reps", value)}
+            keyboardType="number-pad"
+            placeholder={exercise.reps}
+          />
+          <FormField
+            label="Weight"
+            value={set.weight}
+            onChangeText={(value) => updateSetLog(exerciseSlug, set.setNumber, "weight", value)}
+            placeholder="25"
+          />
+        </View>
+      </View>
+    );
+  };
+
+  const renderSupersetSetGroup = (
+    id: string,
+    title: string,
+    notes: string,
+    restAfterGroup: string,
+    exercises: WorkoutExercise[],
+  ) => {
+    const maxSetCount = Math.max(
+      ...exercises.map((exercise) => {
+        const exerciseSlug = exercise.slug ?? toExerciseSlug(exercise.name);
+        return log.exerciseLogs.find((entry) => entry.exerciseSlug === exerciseSlug)?.sets.length ?? 0;
+      }),
+      0,
+    );
+
+    return (
+      <View key={`${day.id}-${id}`} style={styles.supersetGroupCard}>
+        <View style={styles.supersetHeader}>
+          <Text style={styles.supersetLabel}>{title}</Text>
+          <Text style={styles.supersetNotes}>{notes}</Text>
+          <Text style={styles.supersetRest}>Flow: log each movement for the set, then rest {restAfterGroup}.</Text>
+        </View>
+        {Array.from({ length: maxSetCount }, (_, index) => index + 1).map((setNumber) => (
+          <View key={`${id}-round-${setNumber}`} style={styles.supersetRoundCard}>
+            <Text style={styles.supersetRoundTitle}>Superset set {setNumber}</Text>
+            <View style={styles.supersetStack}>
+              {exercises.map((exercise) => renderSupersetSetExercise(exercise, setNumber))}
+            </View>
+          </View>
+        ))}
+        {exercises.map((exercise) => {
+          const exerciseSlug = exercise.slug ?? toExerciseSlug(exercise.name);
+          const exerciseLog = log.exerciseLogs.find((entry) => entry.exerciseSlug === exerciseSlug);
+          const bestSetToday = exerciseLog ? deriveBestSetToday(exerciseLog.sets) : null;
+
+          return (
+            <View key={`${id}-${exerciseSlug}-notes`} style={styles.supersetNotesCard}>
+              <Text style={styles.previousPerformanceTitle}>{exercise.displayName ?? getExerciseDisplayName(exercise.name) ?? exercise.name}</Text>
+              {bestSetToday ? <Text style={styles.bestSetToday}>Best set today: {bestSetToday}</Text> : null}
+              <FormField
+                label="Notes (optional)"
+                value={exerciseLog?.notes ?? ""}
+                onChangeText={(value) => updateExerciseNotes(exerciseSlug, value)}
+                placeholder="Felt strong on the last set"
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
   const renderWorkoutFlowGroup = (group: WorkoutFlowGroup) => {
     if (!group.superset) {
       return renderExerciseLogger(group.entries[0].exercise);
     }
 
-    return (
-      <View key={`${day.id}-${group.id}`} style={styles.supersetGroupCard}>
-        <View style={styles.supersetHeader}>
-          <Text style={styles.supersetLabel}>{group.superset.title}</Text>
-          <Text style={styles.supersetNotes}>{group.superset.notes}</Text>
-          <Text style={styles.supersetRest}>Flow: complete each move in order, then rest {group.superset.restAfterGroup}.</Text>
-        </View>
-        <View style={styles.supersetStack}>
-          {group.entries.map(({ exercise, positionInSuperset }) =>
-            renderExerciseLogger(exercise, {
-              superset: group.superset,
-              positionInSuperset,
-              showSupersetHeader: false,
-            }),
-          )}
-        </View>
-      </View>
+    return renderSupersetSetGroup(
+      group.id,
+      group.superset.title,
+      group.superset.notes,
+      group.superset.restAfterGroup,
+      group.entries.map((entry) => entry.exercise),
     );
   };
 
@@ -701,13 +792,13 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.supersetNotes}>Move through both finisher drills before taking the full rest.</Text>
             <Text style={styles.supersetRest}>Rest after group: 30 sec after both exercises</Text>
           </View>
-          <View style={styles.supersetStack}>
-            {day.coreFinisher.exercises.map((exercise) =>
-              renderExerciseLogger(exercise, {
-                containerStyle: styles.finisherExerciseCard,
-              }),
-            )}
-          </View>
+          {renderSupersetSetGroup(
+            `${day.id}-core-finisher`,
+            "Core finisher superset",
+            "Move through both finisher drills before taking the full rest.",
+            "30 sec after both exercises",
+            day.coreFinisher.exercises,
+          )}
         </SectionCard>
       ) : null}
     </Screen>
@@ -760,6 +851,44 @@ const styles = StyleSheet.create({
   },
   supersetStack: {
     gap: spacing.sm,
+  },
+  supersetRoundCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  supersetRoundTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  pairedExerciseSetCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  pairedExerciseHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  pairedInputGrid: {
+    gap: spacing.sm,
+  },
+  supersetNotesCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
   },
   supersetHeader: {
     gap: 4,

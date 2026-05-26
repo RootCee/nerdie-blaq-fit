@@ -262,7 +262,7 @@ export default function MealsScreen() {
 
   const foodLogSection = (
     <>
-      <SectionCard title="Food Log" eyebrow="Calorie tracker">
+      <SectionCard title="Daily Nutrition" eyebrow="Targets + food log">
         <FormField
           label="Date"
           value={selectedDate}
@@ -270,6 +270,19 @@ export default function MealsScreen() {
           placeholder="YYYY-MM-DD"
           helper="Use YYYY-MM-DD. Apple Health active calories are included when Health access is connected."
         />
+        {guidance ? (
+          <>
+            <Text style={styles.sectionLabel}>Targets</Text>
+            <View style={styles.statsRow}>
+              <StatChip label="Calories" value={`${guidance.calorieTarget}`} />
+              <StatChip label="Protein" value={`${guidance.proteinTargetGrams}g`} />
+              <StatChip label="Carbs" value={`${guidance.carbsRangeGrams.min}-${guidance.carbsRangeGrams.max}g`} />
+              <StatChip label="Fats" value={`${guidance.fatsRangeGrams.min}-${guidance.fatsRangeGrams.max}g`} />
+              <StatChip label="Water" value={`${guidance.waterTargetLiters}L`} />
+            </View>
+          </>
+        ) : null}
+        <Text style={styles.sectionLabel}>Logged today</Text>
         <View style={styles.statsRow}>
           <StatChip label="Consumed" value={`${Math.round(foodTotals.calories)} cal`} />
           <StatChip label="Protein" value={`${Math.round(foodTotals.proteinG)}g`} />
@@ -281,6 +294,14 @@ export default function MealsScreen() {
         <Text style={styles.helperText}>
           Net calories subtract Apple Health active calories when available. Food calories are user-entered.
         </Text>
+        {guidance ? (
+          <>
+            <Text style={styles.helperText}>
+              These are general wellness-focused estimates, not medical advice.
+            </Text>
+            <MedicalNotice />
+          </>
+        ) : null}
       </SectionCard>
 
       <SectionCard title="Add food" eyebrow="Meal entry">
@@ -431,21 +452,10 @@ export default function MealsScreen() {
     <Screen title="Meals" subtitle="Simple daily targets and meal structure built from your saved profile.">
       {foodLogSection}
 
-      <SectionCard title="Daily targets" eyebrow={guidance.goalLabel}>
-        <View style={styles.statsRow}>
-          <StatChip label="Calories" value={`${guidance.calorieTarget}`} />
-          <StatChip label="Protein" value={`${guidance.proteinTargetGrams}g`} />
-          <StatChip label="Carbs" value={`${guidance.carbsRangeGrams.min}-${guidance.carbsRangeGrams.max}g`} />
-          <StatChip label="Fats" value={`${guidance.fatsRangeGrams.min}-${guidance.fatsRangeGrams.max}g`} />
-          <StatChip label="Water" value={`${guidance.waterTargetLiters}L`} />
-        </View>
-        <Text style={styles.helperText}>
-          These are general wellness-focused estimates, not medical advice.
-        </Text>
+      <SectionCard title="Meal targets" eyebrow={guidance.goalLabel}>
         <Text style={styles.helperText}>
           Estimated sample day: {sampleDayCalories} calories across the meals below.
         </Text>
-        <MedicalNotice />
       </SectionCard>
 
       <SectionCard title="Meal structure" eyebrow={guidance.dietaryPreference.replace("-", " ")}>
@@ -556,6 +566,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  sectionLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 19,
+    textTransform: "uppercase",
   },
   formGrid: {
     gap: spacing.sm,

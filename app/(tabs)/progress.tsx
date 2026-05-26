@@ -59,6 +59,10 @@ function buildWeeklyRecapMessage(
   return "A new week can turn quickly. One solid session and one honest check-in is enough to restart momentum.";
 }
 
+function hasWorkoutCompletedOnDate(history: WorkoutHistoryItem[], dateKey: string) {
+  return history.some((item) => getTodayDateKey(new Date(item.completedAt)) === dateKey);
+}
+
 export default function ProgressScreen() {
   const { profile, isComplete } = useOnboardingStore();
   const { isPro } = useSubscription();
@@ -111,6 +115,24 @@ export default function ProgressScreen() {
             activeChallenge = await loadActiveChallenge(beastChallenge.id);
             activeChallengeLogs = activeChallenge ? await loadChallengeDailyLogs(activeChallenge.id) : [];
             challengeBodyWeightLogs = activeChallenge ? await loadRecentBodyWeightHistory(28) : recentBodyWeightLogs;
+
+            if (
+              activeChallenge &&
+              hasWorkoutCompletedOnDate(items, getTodayDateKey()) &&
+              !activeChallengeLogs.some((log) => log.logDate === getTodayDateKey())
+            ) {
+              const checkIn = await loadDailyCheckIn(getTodayDateKey());
+              await saveChallengeDailyLog({
+                userChallengeId: activeChallenge.id,
+                logDate: getTodayDateKey(),
+                workoutCompleted: true,
+                missedReason: null,
+                readinessScore: checkIn ? calculateReadinessScore(checkIn) : null,
+                painFlag: false,
+                strengthNotes: "Synced from completed workout session.",
+              });
+              activeChallengeLogs = await loadChallengeDailyLogs(activeChallenge.id);
+            }
           } catch (challengeLoadFailure) {
             challengeLoadMessage = challengeLoadFailure instanceof Error
               ? challengeLoadFailure.message
@@ -345,6 +367,7 @@ export default function ProgressScreen() {
               <StatChip label="Day" value={`${challengeSummary.currentDay}/28`} />
               <StatChip label="Week" value={String(challengeSummary.currentWeek)} />
               <StatChip label="Complete" value={`${challengeSummary.completionPercentage}%`} />
+              <StatChip label="Workouts" value={String(challengeSummary.workoutsCompleted)} />
               <StatChip label="This week" value={String(challengeSummary.workoutsCompletedThisWeek)} />
               <StatChip label="Missed" value={String(challengeSummary.missedSessions)} />
               <StatChip label="Check-ins" value={String(challengeSummary.checkInStreak)} />
@@ -364,7 +387,7 @@ export default function ProgressScreen() {
               </Text>
             ) : null}
             <Text style={styles.streakNote}>
-              Challenge storage: {challenge.storageMode === "supabase" ? "Supabase" : "local fallback"}
+              Started {new Date(challenge.startedAt).toLocaleDateString()} • Challenge storage: {challenge.storageMode === "supabase" ? "Supabase" : "local fallback"}
             </Text>
             <Text style={styles.copy}>Earn the split through logged proof: train hard, adjust smart, and keep honest notes when life interrupts the plan.</Text>
             {shareProgressText ? (

@@ -137,7 +137,7 @@ export async function loadActiveChallenge(challengeId: ChallengeId): Promise<Use
       .eq("user_id", userId)
       .eq("challenge_id", challengeId)
       .eq("status", "active" satisfies ChallengeStatus)
-      .order("started_at", { ascending: false })
+      .order("started_at", { ascending: true })
       .limit(1)
       .maybeSingle();
 
