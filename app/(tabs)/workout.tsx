@@ -24,7 +24,7 @@ import { AdaptiveTrainingResult, adaptWorkoutForReadiness } from "@/lib/adaptive
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
-import { GroupedWorkoutExerciseDisplay, WorkoutDay, WorkoutDayLog, WorkoutPlan } from "@/types/workout";
+import { WorkoutDay, WorkoutDayLog, WorkoutExercise, WorkoutPlan, WorkoutSupersetGroup } from "@/types/workout";
 import { DailyReadinessCheckIn as DailyReadinessCheckInValue } from "@/types/readiness";
 
 const PROGRAM_WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -49,23 +49,59 @@ type PendingWorkoutRoute =
       params: { dayId: string };
     };
 
-function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
+type WorkoutFlowGroup = {
+  id: string;
+  superset: WorkoutSupersetGroup | null;
+  entries: Array<{
+    exercise: WorkoutExercise;
+    positionInSuperset: number | null;
+  }>;
+};
+
+function getWorkoutFlowGroups(day: WorkoutDay): WorkoutFlowGroup[] {
+  const exerciseBySlug = new Map(
+    day.exercises.map((exercise) => [exercise.slug ?? toExerciseSlug(exercise.name), exercise]),
+  );
   const supersetsBySlug = new Map(
     (day.supersets ?? []).flatMap((superset) =>
       superset.exerciseSlugs.map((slug, index) => [slug, { superset, positionInSuperset: index + 1 }] as const),
     ),
   );
+  const renderedSupersetIds = new Set<string>();
 
-  return day.exercises.map((exercise) => {
-    const key = exercise.slug ?? toExerciseSlug(exercise.name);
-    const match = supersetsBySlug.get(key);
+  return day.exercises.reduce<WorkoutFlowGroup[]>((groups, exercise) => {
+    const slug = exercise.slug ?? toExerciseSlug(exercise.name);
+    const match = supersetsBySlug.get(slug);
 
-    return {
-      exercise,
-      superset: match?.superset ?? null,
-      positionInSuperset: match?.positionInSuperset ?? null,
-    };
-  });
+    if (!match) {
+      groups.push({
+        id: slug,
+        superset: null,
+        entries: [{ exercise, positionInSuperset: null }],
+      });
+      return groups;
+    }
+
+    if (renderedSupersetIds.has(match.superset.id)) {
+      return groups;
+    }
+
+    renderedSupersetIds.add(match.superset.id);
+
+    groups.push({
+      id: match.superset.id,
+      superset: match.superset,
+      entries: match.superset.exerciseSlugs
+        .map((exerciseSlug, index) => {
+          const supersetExercise = exerciseBySlug.get(exerciseSlug);
+          return supersetExercise
+            ? { exercise: supersetExercise, positionInSuperset: index + 1 }
+            : null;
+        })
+        .filter((entry): entry is { exercise: WorkoutExercise; positionInSuperset: number } => Boolean(entry)),
+    });
+    return groups;
+  }, []);
 }
 
 function shouldReplaceSavedPlan(savedPlan: WorkoutPlan, generatedPlan: WorkoutPlan) {
@@ -631,7 +667,7 @@ export default function WorkoutScreen() {
   const currentWeekLabel = `Week ${(plan.currentWeekIndex ?? 0) + 1} of ${plan.programLengthWeeks ?? 8}`;
   const estimatedCompletionLabel = formatShortDate(plan.estimatedCompletionDate);
   const planStartLabel = formatShortDate(plan.planStartDate);
-  const selectedDayExercises = selectedDay ? getGroupedExercises(selectedDay) : [];
+  const selectedDayFlowGroups = selectedDay ? getWorkoutFlowGroups(selectedDay) : [];
   const todaysPlannedWorkout = weekSlots[todayProgramIndex]?.workoutDay ?? null;
   const todaysWorkout = adaptiveResult?.adjustedWorkout ?? todaysPlannedWorkout;
   const hasAdaptiveWorkout = Boolean(adaptiveResult);
@@ -913,37 +949,62 @@ export default function WorkoutScreen() {
                 <>
                   <SectionCard title={selectedDay.title} eyebrow={selectedDay.focus}>
                     <Text style={styles.dayNotes}>{selectedDay.notes}</Text>
-                    {selectedDayExercises.map(({ exercise: item, superset, positionInSuperset }) => (
-                      <View
-                        key={`${selectedDay.id}-${item.name}`}
-                        style={[
-                          styles.exerciseCard,
-                          superset ? styles.supersetExerciseCard : null,
-                        ]}
-                      >
-                        {superset ? (
-                          <View style={styles.supersetHeader}>
-                            <Text style={styles.supersetLabel}>
-                              {superset.title} • Move {positionInSuperset} of {superset.exerciseSlugs.length}
-                            </Text>
-                            <Text style={styles.supersetNotes}>{superset.notes}</Text>
-                            <Text style={styles.supersetRest}>Recovery: {superset.restAfterGroup}</Text>
+                    {selectedDayFlowGroups.map((group) => {
+                      if (!group.superset) {
+                        const item = group.entries[0].exercise;
+
+                        return (
+                          <View key={`${selectedDay.id}-${item.name}`} style={styles.exerciseCard}>
+                            <Pressable
+                              onPress={() => handleDayDetailExercisePress(item.name, item.slug)}
+                            >
+                              <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
+                              <Text style={styles.exerciseLink}>View movement notes</Text>
+                            </Pressable>
+                            <View style={styles.metaRow}>
+                              <Text style={styles.metaText}>Sets: {item.sets}</Text>
+                              <Text style={styles.metaText}>Reps: {item.reps}</Text>
+                              <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
+                            </View>
+                            <Text style={styles.exerciseNotes}>{item.notes}</Text>
                           </View>
-                        ) : null}
-                        <Pressable
-                          onPress={() => handleDayDetailExercisePress(item.name, item.slug)}
-                        >
-                          <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
-                          <Text style={styles.exerciseLink}>View movement notes</Text>
-                        </Pressable>
-                        <View style={styles.metaRow}>
-                          <Text style={styles.metaText}>Sets: {item.sets}</Text>
-                          <Text style={styles.metaText}>Reps: {item.reps}</Text>
-                          <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
+                        );
+                      }
+
+                      return (
+                        <View key={`${selectedDay.id}-${group.id}`} style={styles.supersetGroupCard}>
+                          <View style={styles.supersetHeader}>
+                            <Text style={styles.supersetLabel}>{group.superset.title}</Text>
+                            <Text style={styles.supersetNotes}>{group.superset.notes}</Text>
+                            <Text style={styles.supersetRest}>Flow: complete each move in order, then rest {group.superset.restAfterGroup}.</Text>
+                          </View>
+                          <View style={styles.supersetStack}>
+                            {group.entries.map(({ exercise: item, positionInSuperset }) => (
+                              <View
+                                key={`${selectedDay.id}-${group.id}-${item.name}`}
+                                style={[styles.exerciseCard, styles.supersetExerciseCard]}
+                              >
+                                <Text style={styles.supersetMoveLabel}>
+                                  Move {positionInSuperset} of {group.superset?.exerciseSlugs.length}
+                                </Text>
+                                <Pressable
+                                  onPress={() => handleDayDetailExercisePress(item.name, item.slug)}
+                                >
+                                  <Text style={styles.exerciseName}>{item.displayName ?? getExerciseDisplayName(item.name) ?? item.name}</Text>
+                                  <Text style={styles.exerciseLink}>View movement notes</Text>
+                                </Pressable>
+                                <View style={styles.metaRow}>
+                                  <Text style={styles.metaText}>Sets: {item.sets}</Text>
+                                  <Text style={styles.metaText}>Reps: {item.reps}</Text>
+                                  <Text style={styles.metaText}>Recovery: {item.restTime}</Text>
+                                </View>
+                                <Text style={styles.exerciseNotes}>{item.notes}</Text>
+                              </View>
+                            ))}
+                          </View>
                         </View>
-                        <Text style={styles.exerciseNotes}>{item.notes}</Text>
-                      </View>
-                    ))}
+                      );
+                    })}
 
                     {selectedDay.coreFinisher ? (
                       <View style={styles.coreFinisherCard}>
@@ -1294,6 +1355,17 @@ const styles = StyleSheet.create({
   supersetExerciseCard: {
     borderColor: colors.primary,
   },
+  supersetGroupCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  supersetStack: {
+    gap: spacing.sm,
+  },
   supersetHeader: {
     gap: 2,
   },
@@ -1311,6 +1383,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 12,
     fontWeight: "600",
+  },
+  supersetMoveLabel: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
   },
   exerciseName: {
     color: colors.text,

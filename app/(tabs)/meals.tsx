@@ -1,5 +1,9 @@
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { FormField } from "@/components/ui/FormField";
+import { OptionChips } from "@/components/ui/OptionChips";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { ProLockCard } from "@/components/ProLockCard";
 import { MedicalNotice } from "@/components/MedicalNotice";
 import { Screen } from "@/components/ui/Screen";
@@ -7,9 +11,14 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { generateMealPlan } from "@/features/nutrition/generate-meal-plan";
 import { generateNutritionGuidance } from "@/features/nutrition/generate-nutrition-guidance";
+import { calculateFoodLogDailyTotals, loadFoodLogsForDate, saveFoodLog } from "@/features/nutrition/food-log-persistence";
+import { loadSupplementLogsForDate, saveSupplementLog } from "@/features/nutrition/supplement-log-persistence";
+import { estimateFoodNutritionWithGemini } from "@/lib/ai/geminiFoodEstimator";
+import { getActiveCaloriesForDate } from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useSubscription } from "@/store/subscription-store";
 import { GroceryList } from "@/types/meal-plan";
+import { FoodLogEntry, FoodMealType, FoodNutritionEstimate, SupplementLogEntry, SupplementTiming } from "@/types/nutrition";
 import { colors, spacing } from "@/theme";
 
 const GROCERY_CATEGORIES: Array<{ key: keyof GroceryList; label: string }> = [
@@ -26,14 +35,386 @@ const SLOT_LABELS: Record<string, string> = {
   dinner: "Dinner",
 };
 
+const MEAL_TYPE_OPTIONS: Array<{ label: string; value: FoodMealType }> = [
+  { label: "Breakfast", value: "breakfast" },
+  { label: "Lunch", value: "lunch" },
+  { label: "Dinner", value: "dinner" },
+  { label: "Snack", value: "snack" },
+];
+
+const SUPPLEMENT_TIMING_OPTIONS: Array<{ label: string; value: SupplementTiming }> = [
+  { label: "Morning", value: "morning" },
+  { label: "Pre", value: "pre-workout" },
+  { label: "During", value: "intra-workout" },
+  { label: "Post", value: "post-workout" },
+  { label: "Evening", value: "evening" },
+];
+
+const TIMING_LABELS: Record<SupplementTiming, string> = {
+  morning: "Morning",
+  "pre-workout": "Pre-workout",
+  "intra-workout": "During workout",
+  "post-workout": "Post-workout",
+  evening: "Evening",
+};
+
+function getTodayDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseNumberInput(value: string) {
+  const numeric = Number.parseFloat(value.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 export default function MealsScreen() {
   const { profile, isComplete } = useOnboardingStore();
   const { isPro } = useSubscription();
   const guidance = generateNutritionGuidance(profile);
+  const [selectedDate, setSelectedDate] = useState(getTodayDateKey());
+  const [mealType, setMealType] = useState<FoodMealType>("breakfast");
+  const [foodName, setFoodName] = useState("");
+  const [servingAmount, setServingAmount] = useState("");
+  const [calories, setCalories] = useState("");
+  const [proteinG, setProteinG] = useState("");
+  const [carbsG, setCarbsG] = useState("");
+  const [fatG, setFatG] = useState("");
+  const [servingNotes, setServingNotes] = useState("");
+  const [foodLogs, setFoodLogs] = useState<FoodLogEntry[]>([]);
+  const [activeCalories, setActiveCalories] = useState(0);
+  const [isFoodLogLoading, setIsFoodLogLoading] = useState(true);
+  const [isFoodLogSaving, setIsFoodLogSaving] = useState(false);
+  const [isEstimatingFood, setIsEstimatingFood] = useState(false);
+  const [nutritionEstimate, setNutritionEstimate] = useState<FoodNutritionEstimate | null>(null);
+  const [supplementLogs, setSupplementLogs] = useState<SupplementLogEntry[]>([]);
+  const [supplementTiming, setSupplementTiming] = useState<SupplementTiming>("pre-workout");
+  const [supplementName, setSupplementName] = useState("");
+  const [supplementAmount, setSupplementAmount] = useState("");
+  const [supplementCalories, setSupplementCalories] = useState("");
+  const [supplementProteinG, setSupplementProteinG] = useState("");
+  const [supplementCarbsG, setSupplementCarbsG] = useState("");
+  const [supplementFatG, setSupplementFatG] = useState("");
+  const [supplementNotes, setSupplementNotes] = useState("");
+  const [isSupplementSaving, setIsSupplementSaving] = useState(false);
+  const [foodLogError, setFoodLogError] = useState<string | null>(null);
+  const [supplementLogError, setSupplementLogError] = useState<string | null>(null);
+  const foodTotals = calculateFoodLogDailyTotals(foodLogs);
+  const netCalories = foodTotals.calories - activeCalories;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateFoodLog() {
+      setIsFoodLogLoading(true);
+
+      try {
+        const [entries, healthCalories] = await Promise.all([
+          loadFoodLogsForDate(selectedDate),
+          getActiveCaloriesForDate(selectedDate),
+        ]);
+
+        if (isMounted) {
+          setFoodLogs(entries);
+          setActiveCalories(healthCalories);
+          setFoodLogError(null);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setFoodLogError(loadError instanceof Error ? loadError.message : "Unable to load food logs.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsFoodLogLoading(false);
+        }
+      }
+    }
+
+    void hydrateFoodLog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDate]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateSupplementLog() {
+      try {
+        const entries = await loadSupplementLogsForDate(selectedDate);
+
+        if (isMounted) {
+          setSupplementLogs(entries);
+          setSupplementLogError(null);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setSupplementLogError(loadError instanceof Error ? loadError.message : "Unable to load supplement logs.");
+        }
+      }
+    }
+
+    void hydrateSupplementLog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDate]);
+
+  const handleSaveFoodLog = async () => {
+    setIsFoodLogSaving(true);
+    setFoodLogError(null);
+
+    try {
+      await saveFoodLog({
+        logDate: selectedDate,
+        mealType,
+        foodName,
+        calories: parseNumberInput(calories),
+        proteinG: parseNumberInput(proteinG),
+        carbsG: parseNumberInput(carbsG),
+        fatG: parseNumberInput(fatG),
+        servingNotes: servingNotes.trim()
+          ? `${servingAmount.trim()} - ${servingNotes.trim()}`
+          : servingAmount.trim(),
+      });
+      setFoodName("");
+      setServingAmount("");
+      setCalories("");
+      setProteinG("");
+      setCarbsG("");
+      setFatG("");
+      setServingNotes("");
+      setNutritionEstimate(null);
+      setFoodLogs(await loadFoodLogsForDate(selectedDate));
+    } catch (saveError) {
+      setFoodLogError(saveError instanceof Error ? saveError.message : "Unable to save this food log.");
+    } finally {
+      setIsFoodLogSaving(false);
+    }
+  };
+
+  const handleEstimateFood = async () => {
+    setIsEstimatingFood(true);
+    setFoodLogError(null);
+    setNutritionEstimate(null);
+
+    try {
+      const estimate = await estimateFoodNutritionWithGemini({
+        foodName,
+        amount: servingAmount,
+        mealType,
+      });
+
+      setNutritionEstimate(estimate);
+      setFoodName(estimate.foodName);
+      setServingAmount(estimate.amount);
+      setCalories(String(estimate.calories));
+      setProteinG(String(estimate.proteinG));
+      setCarbsG(String(estimate.carbsG));
+      setFatG(String(estimate.fatG));
+      setServingNotes((current) => {
+        const interpretation = estimate.servingInterpretation || estimate.amount;
+        return current.trim() ? current : `Estimated serving: ${interpretation}`;
+      });
+    } catch (estimateError) {
+      setFoodLogError(estimateError instanceof Error ? estimateError.message : "Unable to estimate nutrition.");
+    } finally {
+      setIsEstimatingFood(false);
+    }
+  };
+
+  const handleSaveSupplementLog = async () => {
+    setIsSupplementSaving(true);
+    setSupplementLogError(null);
+
+    try {
+      await saveSupplementLog({
+        logDate: selectedDate,
+        timing: supplementTiming,
+        supplementName,
+        amount: supplementAmount,
+        calories: parseNumberInput(supplementCalories),
+        proteinG: parseNumberInput(supplementProteinG),
+        carbsG: parseNumberInput(supplementCarbsG),
+        fatG: parseNumberInput(supplementFatG),
+        notes: supplementNotes,
+      });
+      setSupplementName("");
+      setSupplementAmount("");
+      setSupplementCalories("");
+      setSupplementProteinG("");
+      setSupplementCarbsG("");
+      setSupplementFatG("");
+      setSupplementNotes("");
+      setSupplementLogs(await loadSupplementLogsForDate(selectedDate));
+    } catch (saveError) {
+      setSupplementLogError(saveError instanceof Error ? saveError.message : "Unable to save this supplement log.");
+    } finally {
+      setIsSupplementSaving(false);
+    }
+  };
+
+  const foodLogSection = (
+    <>
+      <SectionCard title="Food Log" eyebrow="Calorie tracker">
+        <FormField
+          label="Date"
+          value={selectedDate}
+          onChangeText={setSelectedDate}
+          placeholder="YYYY-MM-DD"
+          helper="Use YYYY-MM-DD. Apple Health active calories are included when Health access is connected."
+        />
+        <View style={styles.statsRow}>
+          <StatChip label="Consumed" value={`${Math.round(foodTotals.calories)} cal`} />
+          <StatChip label="Protein" value={`${Math.round(foodTotals.proteinG)}g`} />
+          <StatChip label="Carbs" value={`${Math.round(foodTotals.carbsG)}g`} />
+          <StatChip label="Fat" value={`${Math.round(foodTotals.fatG)}g`} />
+          <StatChip label="Active" value={`${activeCalories} cal`} />
+          <StatChip label="Net" value={`${Math.round(netCalories)} cal`} />
+        </View>
+        <Text style={styles.helperText}>
+          Net calories subtract Apple Health active calories when available. Food calories are user-entered.
+        </Text>
+      </SectionCard>
+
+      <SectionCard title="Add food" eyebrow="Meal entry">
+        <OptionChips options={MEAL_TYPE_OPTIONS} value={mealType} onChange={setMealType} />
+        <FormField label="Food name" value={foodName} onChangeText={setFoodName} placeholder="Chicken rice bowl" />
+        <FormField
+          label="Amount / serving size"
+          value={servingAmount}
+          onChangeText={setServingAmount}
+          placeholder="1 bowl, 8 oz, 1 cup..."
+          helper="Use the amount you actually ate. AI estimates are easier when the serving is specific."
+        />
+        <PrimaryButton
+          label={isEstimatingFood ? "Estimating..." : "Estimate Calories & Macros"}
+          onPress={() => void handleEstimateFood()}
+          disabled={isEstimatingFood || isFoodLogSaving}
+          variant="ghost"
+        />
+        {nutritionEstimate ? (
+          <View style={styles.estimateCard}>
+            <Text style={styles.estimateTitle}>Estimated nutrition</Text>
+            <Text style={styles.prepDesc}>
+              {nutritionEstimate.servingInterpretation || nutritionEstimate.amount}
+            </Text>
+            <Text style={styles.helperText}>
+              Confidence: {nutritionEstimate.confidence}. {nutritionEstimate.notes}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.formGrid}>
+          <FormField label="Calories" value={calories} onChangeText={setCalories} keyboardType="number-pad" placeholder="520" />
+          <FormField label="Protein grams" value={proteinG} onChangeText={setProteinG} keyboardType="decimal-pad" placeholder="42" />
+          <FormField label="Carbs grams" value={carbsG} onChangeText={setCarbsG} keyboardType="decimal-pad" placeholder="55" />
+          <FormField label="Fat grams" value={fatG} onChangeText={setFatG} keyboardType="decimal-pad" placeholder="14" />
+        </View>
+        <FormField
+          label="Serving notes"
+          value={servingNotes}
+          onChangeText={setServingNotes}
+          placeholder="1 bowl, sauce on side..."
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+        <PrimaryButton
+          label={isFoodLogSaving ? "Saving food..." : "Add Food"}
+          onPress={() => void handleSaveFoodLog()}
+          disabled={isFoodLogSaving}
+        />
+        {foodLogError ? <Text style={styles.errorText}>{foodLogError}</Text> : null}
+      </SectionCard>
+
+      <SectionCard title="Today's entries" eyebrow={isFoodLogLoading ? "Loading" : `${foodLogs.length} logged`}>
+        {!foodLogs.length ? (
+          <Text style={styles.copy}>No food logged for this date yet.</Text>
+        ) : (
+          foodLogs.map((entry) => (
+            <View key={entry.id} style={styles.foodLogCard}>
+              <View style={styles.prepHeader}>
+                <Text style={styles.prepSlot}>{SLOT_LABELS[entry.mealType]}</Text>
+                <Text style={styles.prepCalories}>{entry.calories} cal</Text>
+              </View>
+              <Text style={styles.prepTitle}>{entry.foodName}</Text>
+              <Text style={styles.prepDesc}>
+                {Math.round(entry.proteinG)}g protein • {Math.round(entry.carbsG)}g carbs • {Math.round(entry.fatG)}g fat
+              </Text>
+              {entry.servingNotes ? <Text style={styles.portionHint}>{entry.servingNotes}</Text> : null}
+              <Text style={styles.helperText}>
+                Saved with {entry.storageMode === "supabase" ? "Supabase" : "local fallback"}
+              </Text>
+            </View>
+          ))
+        )}
+      </SectionCard>
+
+      <SectionCard title="Supplement Log" eyebrow="Timing + add-ons">
+        <Text style={styles.helperText}>
+          Track shakes, creatine, BCAAs, vitamins, electrolytes, and other add-ons. Use Food Log for shakes or bars with meaningful calories.
+        </Text>
+        <OptionChips options={SUPPLEMENT_TIMING_OPTIONS} value={supplementTiming} onChange={setSupplementTiming} />
+        <FormField label="Supplement / add-on" value={supplementName} onChangeText={setSupplementName} placeholder="Creatine, BCAAs, whey, multivitamin..." />
+        <FormField label="Amount" value={supplementAmount} onChangeText={setSupplementAmount} placeholder="5g, 2 scoops, 2 capsules..." />
+        <View style={styles.formGrid}>
+          <FormField label="Calories (optional)" value={supplementCalories} onChangeText={setSupplementCalories} keyboardType="number-pad" placeholder="0" />
+          <FormField label="Protein grams" value={supplementProteinG} onChangeText={setSupplementProteinG} keyboardType="decimal-pad" placeholder="0" />
+          <FormField label="Carbs grams" value={supplementCarbsG} onChangeText={setSupplementCarbsG} keyboardType="decimal-pad" placeholder="0" />
+          <FormField label="Fat grams" value={supplementFatG} onChangeText={setSupplementFatG} keyboardType="decimal-pad" placeholder="0" />
+        </View>
+        <FormField
+          label="Notes"
+          value={supplementNotes}
+          onChangeText={setSupplementNotes}
+          placeholder="Before workout, mixed with water, label says zero calories..."
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+        <PrimaryButton
+          label={isSupplementSaving ? "Saving supplement..." : "Add Supplement"}
+          onPress={() => void handleSaveSupplementLog()}
+          disabled={isSupplementSaving}
+          variant="ghost"
+        />
+        {supplementLogError ? <Text style={styles.errorText}>{supplementLogError}</Text> : null}
+        {supplementLogs.length ? (
+          <View style={styles.supplementList}>
+            {supplementLogs.map((entry) => (
+              <View key={entry.id} style={styles.supplementCard}>
+                <View style={styles.prepHeader}>
+                  <Text style={styles.prepSlot}>{TIMING_LABELS[entry.timing]}</Text>
+                  <Text style={styles.prepCalories}>{entry.calories ? `${entry.calories} cal` : "No macro impact"}</Text>
+                </View>
+                <Text style={styles.prepTitle}>{entry.supplementName}</Text>
+                <Text style={styles.prepDesc}>{entry.amount}</Text>
+                {entry.proteinG || entry.carbsG || entry.fatG ? (
+                  <Text style={styles.prepDesc}>
+                    {Math.round(entry.proteinG)}g protein • {Math.round(entry.carbsG)}g carbs • {Math.round(entry.fatG)}g fat
+                  </Text>
+                ) : null}
+                {entry.notes ? <Text style={styles.portionHint}>{entry.notes}</Text> : null}
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.copy}>No supplements logged for this date yet.</Text>
+        )}
+      </SectionCard>
+    </>
+  );
 
   if (!isComplete || !guidance) {
     return (
       <Screen title="Meals" subtitle="Your nutrition targets show up here once your profile is complete enough to support a safe recommendation.">
+        {foodLogSection}
         <SectionCard title="Your meal guidance starts with your profile" eyebrow="Finish setup">
           <Text style={styles.copy}>
             Add your goal, weight, activity level, and food preference in onboarding so Nerdie Blaq Fit can build your first set of targets.
@@ -48,6 +429,8 @@ export default function MealsScreen() {
 
   return (
     <Screen title="Meals" subtitle="Simple daily targets and meal structure built from your saved profile.">
+      {foodLogSection}
+
       <SectionCard title="Daily targets" eyebrow={guidance.goalLabel}>
         <View style={styles.statsRow}>
           <StatChip label="Calories" value={`${guidance.calorieTarget}`} />
@@ -174,6 +557,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
+  formGrid: {
+    gap: spacing.sm,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 14,
+    lineHeight: 20,
+  },
   mealBlock: {
     gap: spacing.xs,
     paddingBottom: spacing.sm,
@@ -195,6 +586,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.xs,
     padding: spacing.md,
+  },
+  foodLogCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 16,
+    borderColor: colors.border,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  supplementList: {
+    gap: spacing.sm,
+  },
+  supplementCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 16,
+    borderColor: colors.border,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  estimateCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  estimateTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
   },
   prepHeader: {
     alignItems: "center",

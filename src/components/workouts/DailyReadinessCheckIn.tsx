@@ -76,6 +76,7 @@ export function DailyReadinessCheckIn({ value, isSaving, error, onChange, onSubm
           onChangeText={(text) => updateNumber("previousSessionRpe", text)}
           keyboardType="number-pad"
           placeholder="7"
+          helper="RPE means Rate of Perceived Exertion: 1 is very easy, 10 is maximum effort."
         />
       </View>
       <View style={styles.sorenessGrid}>

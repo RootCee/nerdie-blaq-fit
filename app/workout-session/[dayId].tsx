@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { FormField } from "@/components/ui/FormField";
@@ -16,10 +16,10 @@ import {
   replaceWorkoutDayLog,
 } from "@/features/workouts/workout-log-persistence";
 import { loadActiveWorkoutPlan } from "@/features/workouts/workout-plan-persistence";
+import { saveCompletedWorkoutToHealthKit } from "@/lib/health";
 import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 import {
-  GroupedWorkoutExerciseDisplay,
   WorkoutPlan,
   WorkoutDay,
   WorkoutDayLog,
@@ -49,23 +49,59 @@ function getTodayProgramDayIndex(plan: WorkoutPlan) {
   return ((safeDayOffset % 7) + 7) % 7;
 }
 
-function getGroupedExercises(day: WorkoutDay): GroupedWorkoutExerciseDisplay[] {
+type WorkoutFlowGroup = {
+  id: string;
+  superset: WorkoutSupersetGroup | null;
+  entries: Array<{
+    exercise: WorkoutExercise;
+    positionInSuperset: number | null;
+  }>;
+};
+
+function getWorkoutFlowGroups(day: WorkoutDay): WorkoutFlowGroup[] {
+  const exerciseBySlug = new Map(
+    day.exercises.map((exercise) => [exercise.slug ?? toExerciseSlug(exercise.name), exercise]),
+  );
   const supersetsBySlug = new Map(
     (day.supersets ?? []).flatMap((superset) =>
       superset.exerciseSlugs.map((slug, index) => [slug, { superset, positionInSuperset: index + 1 }] as const),
     ),
   );
+  const renderedSupersetIds = new Set<string>();
 
-  return day.exercises.map((exercise) => {
-    const key = exercise.slug ?? exercise.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const match = supersetsBySlug.get(key);
+  return day.exercises.reduce<WorkoutFlowGroup[]>((groups, exercise) => {
+    const slug = exercise.slug ?? toExerciseSlug(exercise.name);
+    const match = supersetsBySlug.get(slug);
 
-    return {
-      exercise,
-      superset: match?.superset ?? null,
-      positionInSuperset: match?.positionInSuperset ?? null,
-    };
-  });
+    if (!match) {
+      groups.push({
+        id: slug,
+        superset: null,
+        entries: [{ exercise, positionInSuperset: null }],
+      });
+      return groups;
+    }
+
+    if (renderedSupersetIds.has(match.superset.id)) {
+      return groups;
+    }
+
+    renderedSupersetIds.add(match.superset.id);
+
+    groups.push({
+      id: match.superset.id,
+      superset: match.superset,
+      entries: match.superset.exerciseSlugs
+        .map((exerciseSlug, index) => {
+          const supersetExercise = exerciseBySlug.get(exerciseSlug);
+          return supersetExercise
+            ? { exercise: supersetExercise, positionInSuperset: index + 1 }
+            : null;
+        })
+        .filter((entry): entry is { exercise: WorkoutExercise; positionInSuperset: number } => Boolean(entry)),
+    });
+    return groups;
+  }, []);
 }
 
 function parseNumericValue(value: string) {
@@ -110,6 +146,8 @@ export default function WorkoutSessionScreen() {
   const [isSavingWeight, setIsSavingWeight] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weightError, setWeightError] = useState<string | null>(null);
+  const [sessionStartedAt] = useState(() => new Date().toISOString());
+  const [healthWriteMessage, setHealthWriteMessage] = useState<string | null>(null);
 
   const handleExercisePress = (name: string, slug?: string) => {
     const resolvedSlug = slug ?? toExerciseSlug(name);
@@ -310,6 +348,18 @@ export default function WorkoutSessionScreen() {
       await replaceWorkoutDayLog(updatedLog);
       setLog(updatedLog);
       setError(null);
+      const healthWriteResult = await saveCompletedWorkoutToHealthKit({
+        title: updatedLog.dayTitle,
+        startDate: sessionStartedAt,
+        endDate: updatedLog.completedAt ?? new Date().toISOString(),
+      });
+
+      setHealthWriteMessage(healthWriteResult.message);
+
+      if (!healthWriteResult.success && healthWriteResult.message) {
+        Alert.alert("Apple Health not updated", healthWriteResult.message);
+      }
+
       router.back();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save this workout log.");
@@ -367,7 +417,7 @@ export default function WorkoutSessionScreen() {
   }
 
   const volumeSummary: WorkoutVolumeSummary = deriveWorkoutVolumeSummary(log);
-  const groupedExercises = getGroupedExercises(day);
+  const workoutFlowGroups = getWorkoutFlowGroups(day);
 
   const renderExerciseLogger = (
     exercise: WorkoutExercise,
@@ -500,7 +550,7 @@ export default function WorkoutSessionScreen() {
                 style={[styles.statusPill, set.isCompleted ? styles.statusPillActive : null]}
               >
                 <Text style={[styles.statusPillText, set.isCompleted ? styles.statusPillTextActive : null]}>
-                  {set.isCompleted ? "Completed" : "Pending"}
+                  {set.isCompleted ? "Completed" : "Tap to complete set"}
                 </Text>
               </Pressable>
             </View>
@@ -531,6 +581,31 @@ export default function WorkoutSessionScreen() {
           numberOfLines={3}
           textAlignVertical="top"
         />
+      </View>
+    );
+  };
+
+  const renderWorkoutFlowGroup = (group: WorkoutFlowGroup) => {
+    if (!group.superset) {
+      return renderExerciseLogger(group.entries[0].exercise);
+    }
+
+    return (
+      <View key={`${day.id}-${group.id}`} style={styles.supersetGroupCard}>
+        <View style={styles.supersetHeader}>
+          <Text style={styles.supersetLabel}>{group.superset.title}</Text>
+          <Text style={styles.supersetNotes}>{group.superset.notes}</Text>
+          <Text style={styles.supersetRest}>Flow: complete each move in order, then rest {group.superset.restAfterGroup}.</Text>
+        </View>
+        <View style={styles.supersetStack}>
+          {group.entries.map(({ exercise, positionInSuperset }) =>
+            renderExerciseLogger(exercise, {
+              superset: group.superset,
+              positionInSuperset,
+              showSupersetHeader: false,
+            }),
+          )}
+        </View>
       </View>
     );
   };
@@ -606,16 +681,11 @@ export default function WorkoutSessionScreen() {
           </View>
         </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {healthWriteMessage ? <Text style={styles.healthWriteText}>{healthWriteMessage}</Text> : null}
       </SectionCard>
 
       <SectionCard title="Main work" eyebrow="Train through the day">
-        {groupedExercises.map(({ exercise, superset, positionInSuperset }) =>
-          renderExerciseLogger(exercise, {
-            superset,
-            positionInSuperset,
-            showSupersetHeader: Boolean(superset),
-          }),
-        )}
+        {workoutFlowGroups.map(renderWorkoutFlowGroup)}
       </SectionCard>
 
       {day.coreFinisher ? (
@@ -631,11 +701,13 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.supersetNotes}>Move through both finisher drills before taking the full rest.</Text>
             <Text style={styles.supersetRest}>Rest after group: 30 sec after both exercises</Text>
           </View>
-          {day.coreFinisher.exercises.map((exercise) =>
-            renderExerciseLogger(exercise, {
-              containerStyle: styles.finisherExerciseCard,
-            }),
-          )}
+          <View style={styles.supersetStack}>
+            {day.coreFinisher.exercises.map((exercise) =>
+              renderExerciseLogger(exercise, {
+                containerStyle: styles.finisherExerciseCard,
+              }),
+            )}
+          </View>
         </SectionCard>
       ) : null}
     </Screen>
@@ -677,6 +749,17 @@ const styles = StyleSheet.create({
   },
   supersetExerciseCard: {
     borderColor: colors.primary,
+  },
+  supersetGroupCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  supersetStack: {
+    gap: spacing.sm,
   },
   supersetHeader: {
     gap: 4,
@@ -852,6 +935,11 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 14,
     lineHeight: 20,
+  },
+  healthWriteText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
   },
   footerRow: {
     flexDirection: "row",

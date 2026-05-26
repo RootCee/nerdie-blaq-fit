@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -175,6 +175,7 @@ export default function ProgressScreen() {
     bodyWeightSummary.distanceFromGoal,
   );
   const todayChallengeLog = challengeLogs.find((log) => log.logDate === getTodayDateKey()) ?? null;
+  const hasLoggedChallengeToday = Boolean(todayChallengeLog);
   const shouldShowSharePrompt = Boolean(challenge || challengeSummary);
   const shareProgressText = shouldShowSharePrompt
     ? generateShareProgressText({ fitScore: challengeSummary?.proofScore ?? null })
@@ -237,6 +238,11 @@ export default function ProgressScreen() {
       return;
     }
 
+    if (hasLoggedChallengeToday) {
+      setChallengeError("Today's challenge proof is already saved. You can log the next challenge day tomorrow.");
+      return;
+    }
+
     setIsChallengeSaving(true);
     setChallengeError(null);
 
@@ -258,6 +264,20 @@ export default function ProgressScreen() {
       setChallengeError(logError instanceof Error ? logError.message : "Daily log save failed. Your challenge proof was not updated.");
     } finally {
       setIsChallengeSaving(false);
+    }
+  };
+
+  const handleShareProgress = async () => {
+    if (!shareProgressText) {
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: shareProgressText,
+      });
+    } catch (shareError) {
+      setChallengeError(shareError instanceof Error ? shareError.message : "Sharing is not available right now.");
     }
   };
 
@@ -351,6 +371,12 @@ export default function ProgressScreen() {
               <View style={styles.sharePromptCard}>
                 <Text style={styles.sharePromptTitle}>Share your proof. Show your discipline.</Text>
                 <Text style={styles.copy}>{shareProgressText}</Text>
+                <PrimaryButton
+                  label="Share Progress"
+                  onPress={() => void handleShareProgress()}
+                  disabled={isChallengeSaving}
+                  variant="ghost"
+                />
               </View>
             ) : null}
             <FormField
@@ -363,22 +389,26 @@ export default function ProgressScreen() {
               textAlignVertical="top"
             />
             {todayChallengeLog ? (
-              <Text style={styles.statusLine}>
-                Today logged: {todayChallengeLog.workoutCompleted ? "workout completed" : `missed - ${todayChallengeLog.missedReason?.replace(/-/g, " ") ?? "reason saved"}`}
-              </Text>
+              <View style={styles.todayProofCard}>
+                <Text style={styles.todayProofTitle}>Today&apos;s proof is saved</Text>
+                <Text style={styles.statusLine}>
+                  {todayChallengeLog.workoutCompleted ? "Workout completed" : `Missed - ${todayChallengeLog.missedReason?.replace(/-/g, " ") ?? "reason saved"}`}
+                </Text>
+                <Text style={styles.streakNote}>Come back tomorrow to log the next challenge day.</Text>
+              </View>
             ) : null}
             {challengeError ? <Text style={styles.errorText}>{challengeError}</Text> : null}
             <View style={styles.buttonRow}>
               <PrimaryButton
-                label={isChallengeSaving ? "Saving..." : "Mark Workout Complete"}
+                label={isChallengeSaving ? "Saving..." : hasLoggedChallengeToday ? "Workout Logged Today" : "Log Today's Workout Complete"}
                 onPress={() => void handleSaveChallengeLog(true, null)}
-                disabled={isChallengeSaving || !isPro}
+                disabled={isChallengeSaving || !isPro || hasLoggedChallengeToday}
                 style={styles.flexButton}
               />
               <PrimaryButton
-                label="Log Missed Session"
+                label={hasLoggedChallengeToday ? "Today's Proof Saved" : "Log Missed Session"}
                 onPress={() => setIsMissedModalOpen(true)}
-                disabled={isChallengeSaving || !isPro}
+                disabled={isChallengeSaving || !isPro || hasLoggedChallengeToday}
                 variant="ghost"
                 style={styles.flexButton}
               />
@@ -657,6 +687,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     lineHeight: 22,
+  },
+  todayProofCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.primary,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  todayProofTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 21,
   },
   copy: {
     color: colors.textMuted,

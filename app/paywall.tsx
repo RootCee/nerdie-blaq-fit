@@ -23,6 +23,23 @@ function formatFeatureName(feature: string | string[] | undefined) {
   return value.replace(/-/g, " ");
 }
 
+function formatSubscriptionPeriod(period: string | null | undefined) {
+  switch (period) {
+    case "P1W":
+      return "week";
+    case "P1M":
+      return "month";
+    case "P3M":
+      return "3 months";
+    case "P6M":
+      return "6 months";
+    case "P1Y":
+      return "year";
+    default:
+      return "month";
+  }
+}
+
 export default function PaywallScreen() {
   const { feature } = useLocalSearchParams<{ feature?: string }>();
   const {
@@ -42,6 +59,9 @@ export default function PaywallScreen() {
   const isBusy = isPurchasing || isRestoring;
   const isActivating = purchaseActivationStatus === "activating";
   const hasPackage = Boolean(proPackage);
+  const product = proPackage?.product ?? null;
+  const subscriptionPeriod = formatSubscriptionPeriod(product?.subscriptionPeriod);
+  const displayedPrice = product?.priceString ? `${product.priceString}/${subscriptionPeriod}` : "Subscription price loading";
   const configurationMessage = "Subscription is being configured. Please try again soon.";
   const displayError = activationMessage
     ? actionError
@@ -104,8 +124,10 @@ export default function PaywallScreen() {
 
       <SectionCard title="Pro subscription" eyebrow="3-day free trial">
         <View style={styles.priceBlock}>
-          <Text style={styles.price}>$9.99/month</Text>
-          <Text style={styles.copy}>Start with a 3-day free trial. Cancel anytime in your Apple ID subscriptions.</Text>
+          <Text style={styles.price}>{displayedPrice}</Text>
+          <Text style={styles.copy}>
+            Start with a 3-day free trial when Apple shows one for your account. Cancel anytime in your Apple ID subscriptions.
+          </Text>
         </View>
         <View style={styles.featureList}>
           {marketingCopy.proFeatureBullets.map((featureItem) => (

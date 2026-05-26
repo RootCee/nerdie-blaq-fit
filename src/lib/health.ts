@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import AppleHealthKit, {
+  HealthActivity,
+  HealthActivityOptions,
   HealthInputOptions,
   HealthKitPermissions,
   HealthObserver,
@@ -22,7 +24,10 @@ const HEALTHKIT_PERMISSIONS: HealthKitPermissions = {
       AppleHealthKit.Constants.Permissions.Weight,
       AppleHealthKit.Constants.Permissions.Workout,
     ],
-    write: [],
+    write: [
+      AppleHealthKit.Constants.Permissions.Workout,
+      AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+    ],
   },
 };
 
@@ -89,6 +94,20 @@ function getTodayRange(): Required<Pick<HealthInputOptions, "startDate" | "endDa
   return {
     startDate: startOfDay.toISOString(),
     endDate: now.toISOString(),
+  };
+}
+
+function getLocalDayRange(dateKey: string): Required<Pick<HealthInputOptions, "startDate" | "endDate">> {
+  const [year, month, day] = dateKey.split("-").map((value) => Number.parseInt(value, 10));
+  const startOfDay = Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)
+    ? new Date(year, month - 1, day, 0, 0, 0, 0)
+    : new Date();
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return {
+    startDate: startOfDay.toISOString(),
+    endDate: endOfDay.toISOString(),
   };
 }
 
@@ -598,6 +617,138 @@ export async function getTodayActiveCalories() {
   }, 0);
 
   return Math.round(totalCalories);
+}
+
+export async function getActiveCaloriesForDate(dateKey: string) {
+  const isAuthorized = await getHealthKitAuthorizationStatus();
+
+  if (!isAuthorized) {
+    return 0;
+  }
+
+  const samples = await getActiveEnergySamples({
+    ...getLocalDayRange(dateKey),
+    ascending: false,
+  });
+
+  const totalCalories = samples.reduce((sum, sample) => {
+    return sum + (typeof sample.value === "number" ? sample.value : 0);
+  }, 0);
+
+  return Math.round(totalCalories);
+}
+
+export interface CompletedWorkoutHealthKitInput {
+  title: string;
+  startDate: string;
+  endDate: string;
+  estimatedCalories?: number | null;
+  activityType?: HealthActivity;
+}
+
+export interface CompletedWorkoutHealthKitResult {
+  success: boolean;
+  message: string | null;
+  workoutId: string | null;
+}
+
+function estimateCaloriesForWorkout(startDate: string, endDate: string) {
+  const durationMinutes = Math.max(
+    Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 60000),
+    0,
+  );
+
+  if (durationMinutes < 5) {
+    return null;
+  }
+
+  return Math.round(durationMinutes * 6);
+}
+
+function saveHealthKitWorkout(options: HealthActivityOptions & {
+  energyBurned?: number;
+  energyBurnedUnit?: HealthUnit;
+}) {
+  return new Promise<string>((resolve, reject) => {
+    try {
+      AppleHealthKit.saveWorkout(options, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(typeof result === "string" ? result : String(result?.value ?? ""));
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export async function saveCompletedWorkoutToHealthKit(
+  input: CompletedWorkoutHealthKitInput,
+): Promise<CompletedWorkoutHealthKitResult> {
+  const isAvailable = await checkAvailability();
+
+  if (!isAvailable) {
+    return {
+      success: false,
+      message: getHealthKitUnavailableMessage(),
+      workoutId: null,
+    };
+  }
+
+  const isAuthorized = await initHealthKit();
+
+  if (!isAuthorized) {
+    return {
+      success: false,
+      message: "Apple Health workout logging needs permission. Your workout was saved in Nerdie Blaq Fit, but it was not written to Apple Health.",
+      workoutId: null,
+    };
+  }
+
+  const estimatedCalories = input.estimatedCalories ?? estimateCaloriesForWorkout(input.startDate, input.endDate);
+  const workoutOptions: HealthActivityOptions & {
+    energyBurned?: number;
+    energyBurnedUnit?: HealthUnit;
+  } = {
+    type: input.activityType ?? HealthActivity.TraditionalStrengthTraining,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    metadata: {
+      HKMetadataKeyWorkoutBrandName: "Nerdie Blaq Fit",
+      title: input.title,
+      caloriesAreEstimated: estimatedCalories !== null,
+    },
+  };
+
+  if (estimatedCalories !== null) {
+    workoutOptions.energyBurned = estimatedCalories;
+    workoutOptions.energyBurnedUnit = HealthUnit.calorie;
+  }
+
+  try {
+    const workoutId = await saveHealthKitWorkout(workoutOptions);
+    return {
+      success: true,
+      message: estimatedCalories !== null
+        ? "Workout written to Apple Health with estimated active calories."
+        : "Workout written to Apple Health.",
+      workoutId,
+    };
+  } catch (error) {
+    console.warn("[HealthKit] saveWorkout failed.", {
+      workoutTitle: input.title,
+      error: formatHealthKitError(error),
+    });
+
+    return {
+      success: false,
+      message: "Your workout was saved in Nerdie Blaq Fit, but Apple Health did not accept the workout write. Check Health permissions and try again next session.",
+      workoutId: null,
+    };
+  }
 }
 
 export async function getTodayWorkouts() {

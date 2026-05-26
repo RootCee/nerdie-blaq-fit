@@ -428,6 +428,11 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    if (proPackage.product.identifier !== REVENUECAT_PRODUCT_ID) {
+      setError(`Subscription product mismatch. Expected ${REVENUECAT_PRODUCT_ID}, found ${proPackage.product.identifier}.`);
+      return;
+    }
+
     setIsPurchasing(true);
     purchaseOperationInFlightRef.current = true;
     setPurchaseActivationStatus("purchasing");
