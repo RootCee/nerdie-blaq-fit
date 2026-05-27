@@ -169,3 +169,30 @@ export async function saveSupplementLog(input: SupplementLogEntryInput): Promise
     return saveLocalSupplementLog(input);
   }
 }
+
+export async function deleteSupplementLog(entry: SupplementLogEntry): Promise<void> {
+  const localLogs = await loadLocalSupplementLogs();
+  await saveLocalSupplementLogs(localLogs.filter((log) => log.id !== entry.id));
+
+  if (entry.storageMode !== "supabase") {
+    return;
+  }
+
+  const config = getOnboardingPersistenceConfig();
+
+  if (!config.isConfigured || !supabase) {
+    return;
+  }
+
+  try {
+    await ensureSupabaseSession();
+    const userId = await getAuthenticatedSupabaseUserId();
+    await supabase
+      .from("user_supplement_logs")
+      .delete()
+      .eq("id", entry.id)
+      .eq("user_id", userId);
+  } catch {
+    // Local fallback has already been cleared; leave remote retry to the next explicit delete.
+  }
+}

@@ -60,6 +60,7 @@ export interface ChallengeProofSummary {
   currentDay: number;
   currentWeek: number;
   completionPercentage: number;
+  daysLogged: number;
   workoutsAccountedFor: number;
   workoutsCompleted: number;
   workoutsCompletedThisWeek: number;

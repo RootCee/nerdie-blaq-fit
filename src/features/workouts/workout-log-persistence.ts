@@ -128,7 +128,9 @@ export function buildWorkoutDayLog(day: WorkoutDay, existingLog?: WorkoutDayLog 
     dayId: day.id,
     dayTitle: day.title,
     isCompleted: existingLog?.isCompleted ?? false,
+    startedAt: existingLog?.startedAt ?? null,
     completedAt: existingLog?.completedAt ?? null,
+    durationSeconds: existingLog?.durationSeconds ?? null,
     exerciseLogs: allExercises.map((exercise) => {
       const slug = exercise.slug ?? toExerciseSlug(exercise.name);
       const existingExerciseLog = existingBySlug.get(slug);
@@ -149,7 +151,9 @@ function mapStoredRowToWorkoutDayLog(row: StoredWorkoutDayLogRow): WorkoutDayLog
     dayId: row.day_id,
     dayTitle: row.day_title,
     isCompleted: row.is_completed,
+    startedAt: null,
     completedAt: row.completed_at,
+    durationSeconds: null,
     exerciseLogs: row.exercise_logs.map((entry) => normalizeExerciseLog(entry as LegacyWorkoutExerciseLog)),
   };
 }
@@ -174,6 +178,8 @@ async function loadLocalWorkoutDayLogs(): Promise<Record<string, WorkoutDayLog>>
       dayId,
       {
         ...log,
+        startedAt: log.startedAt ?? null,
+        durationSeconds: log.durationSeconds ?? null,
         exerciseLogs: log.exerciseLogs.map((entry) => normalizeExerciseLog(entry)),
       },
     ]),
@@ -336,6 +342,7 @@ function mapWorkoutDayLogToHistoryItem(log: WorkoutDayLog): WorkoutHistoryItem |
     dayTitle: log.dayTitle,
     completedAt: log.completedAt,
     completionStatus: "completed",
+    durationSeconds: log.durationSeconds ?? null,
     exerciseSummary,
     notesPreview,
     loggedExerciseCount: log.exerciseLogs.length,

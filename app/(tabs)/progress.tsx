@@ -158,6 +158,14 @@ function getWorkoutVolumeSince(history: WorkoutHistoryItem[], startDate: Date) {
     .reduce((sum, item) => sum + item.totalWorkoutVolume, 0);
 }
 
+function getWorkoutMinutesSince(history: WorkoutHistoryItem[], startDate: Date) {
+  const startTime = new Date(startDate).setHours(0, 0, 0, 0);
+
+  return history
+    .filter((item) => new Date(item.completedAt).getTime() >= startTime)
+    .reduce((sum, item) => sum + Math.round((item.durationSeconds ?? 0) / 60), 0);
+}
+
 function getWeeklyWorkoutVolume(history: WorkoutHistoryItem[]) {
   return getWorkoutVolumeSince(history, getStartOfWeek(new Date()));
 }
@@ -330,6 +338,8 @@ export default function ProgressScreen() {
         weeklyVolume: getWeeklyWorkoutVolume(history),
         challengeVolume: getWorkoutVolumeSince(history, new Date(challenge.startedAt)),
         bestSetToday,
+        daysLogged: challengeSummary.daysLogged,
+        timeSpentMinutes: getWorkoutMinutesSince(history, new Date(challenge.startedAt)),
         streakDays: stats.currentStreak,
         weightGoalProgress: formatWeightGoalProgress(bodyWeightSummary),
         workoutsAccountedFor: challengeSummary.workoutsAccountedFor,

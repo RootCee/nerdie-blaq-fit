@@ -11,8 +11,8 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { generateMealPlan } from "@/features/nutrition/generate-meal-plan";
 import { generateNutritionGuidance } from "@/features/nutrition/generate-nutrition-guidance";
-import { calculateFoodLogDailyTotals, loadFoodLogsForDate, loadRecentFoodLogs, loadSavedMeals, saveFoodLog, saveMealForLater, saveMealFromFoodLog } from "@/features/nutrition/food-log-persistence";
-import { loadRecentSupplementLogs, loadSupplementLogsForDate, saveSupplementLog } from "@/features/nutrition/supplement-log-persistence";
+import { calculateFoodLogDailyTotals, deleteFoodLog, loadFoodLogsForDate, loadRecentFoodLogs, loadSavedMeals, saveFoodLog, saveMealForLater, saveMealFromFoodLog } from "@/features/nutrition/food-log-persistence";
+import { deleteSupplementLog, loadRecentSupplementLogs, loadSupplementLogsForDate, saveSupplementLog } from "@/features/nutrition/supplement-log-persistence";
 import { estimateFoodNutritionWithGemini } from "@/lib/ai/geminiFoodEstimator";
 import { getActiveCaloriesForDate } from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
@@ -117,6 +117,7 @@ export default function MealsScreen() {
   const [isFoodLogLoading, setIsFoodLogLoading] = useState(true);
   const [isFoodLogSaving, setIsFoodLogSaving] = useState(false);
   const [isSavedMealSaving, setIsSavedMealSaving] = useState(false);
+  const [deletingFoodLogId, setDeletingFoodLogId] = useState<string | null>(null);
   const [isEstimatingFood, setIsEstimatingFood] = useState(false);
   const [nutritionEstimate, setNutritionEstimate] = useState<FoodNutritionEstimate | null>(null);
   const [supplementLogs, setSupplementLogs] = useState<SupplementLogEntry[]>([]);
@@ -130,6 +131,7 @@ export default function MealsScreen() {
   const [supplementFatG, setSupplementFatG] = useState("");
   const [supplementNotes, setSupplementNotes] = useState("");
   const [isSupplementSaving, setIsSupplementSaving] = useState(false);
+  const [deletingSupplementLogId, setDeletingSupplementLogId] = useState<string | null>(null);
   const [foodLogError, setFoodLogError] = useState<string | null>(null);
   const [supplementLogError, setSupplementLogError] = useState<string | null>(null);
   const foodTotals = calculateFoodLogDailyTotals(foodLogs);
@@ -433,6 +435,20 @@ export default function MealsScreen() {
     }
   };
 
+  const handleDeleteFoodLog = async (entry: FoodLogEntry) => {
+    setDeletingFoodLogId(entry.id);
+    setFoodLogError(null);
+
+    try {
+      await deleteFoodLog(entry);
+      await refreshFoodLogs();
+    } catch (deleteError) {
+      setFoodLogError(deleteError instanceof Error ? deleteError.message : "Unable to delete this food log.");
+    } finally {
+      setDeletingFoodLogId(null);
+    }
+  };
+
   const fillSupplementFromLog = (entry: SupplementLogEntry) => {
     setSupplementTiming(entry.timing);
     setSupplementName(entry.supplementName);
@@ -466,6 +482,20 @@ export default function MealsScreen() {
       setSupplementLogError(saveError instanceof Error ? saveError.message : "Unable to repeat this supplement log.");
     } finally {
       setIsSupplementSaving(false);
+    }
+  };
+
+  const handleDeleteSupplementLog = async (entry: SupplementLogEntry) => {
+    setDeletingSupplementLogId(entry.id);
+    setSupplementLogError(null);
+
+    try {
+      await deleteSupplementLog(entry);
+      await refreshSupplementLogs();
+    } catch (deleteError) {
+      setSupplementLogError(deleteError instanceof Error ? deleteError.message : "Unable to delete this supplement log.");
+    } finally {
+      setDeletingSupplementLogId(null);
     }
   };
 
@@ -663,6 +693,12 @@ export default function MealsScreen() {
               <Text style={styles.helperText}>
                 Saved with {entry.storageMode === "supabase" ? "Supabase" : "local fallback"}
               </Text>
+              <PrimaryButton
+                label={deletingFoodLogId === entry.id ? "Deleting..." : "Delete Food"}
+                onPress={() => void handleDeleteFoodLog(entry)}
+                disabled={deletingFoodLogId === entry.id || isFoodLogSaving}
+                variant="ghost"
+              />
             </View>
           ))
         )}
@@ -743,6 +779,12 @@ export default function MealsScreen() {
                   </Text>
                 ) : null}
                 {entry.notes ? <Text style={styles.portionHint}>{entry.notes}</Text> : null}
+                <PrimaryButton
+                  label={deletingSupplementLogId === entry.id ? "Deleting..." : "Delete Supplement"}
+                  onPress={() => void handleDeleteSupplementLog(entry)}
+                  disabled={deletingSupplementLogId === entry.id || isSupplementSaving}
+                  variant="ghost"
+                />
               </View>
             ))}
           </View>

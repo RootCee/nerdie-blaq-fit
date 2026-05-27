@@ -221,6 +221,33 @@ export async function saveFoodLog(input: FoodLogEntryInput): Promise<FoodLogEntr
   }
 }
 
+export async function deleteFoodLog(entry: FoodLogEntry): Promise<void> {
+  const localLogs = await loadLocalFoodLogs();
+  await saveLocalFoodLogs(localLogs.filter((log) => log.id !== entry.id));
+
+  if (entry.storageMode !== "supabase") {
+    return;
+  }
+
+  const config = getOnboardingPersistenceConfig();
+
+  if (!config.isConfigured || !supabase) {
+    return;
+  }
+
+  try {
+    await ensureSupabaseSession();
+    const userId = await getAuthenticatedSupabaseUserId();
+    await supabase
+      .from("user_food_logs")
+      .delete()
+      .eq("id", entry.id)
+      .eq("user_id", userId);
+  } catch {
+    // Local fallback has already been cleared; leave remote retry to the next explicit delete.
+  }
+}
+
 export function calculateFoodLogDailyTotals(entries: FoodLogEntry[]): FoodLogDailyTotals {
   return entries.reduce<FoodLogDailyTotals>(
     (totals, entry) => ({

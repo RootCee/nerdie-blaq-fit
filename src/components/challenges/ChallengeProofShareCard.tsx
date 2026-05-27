@@ -15,6 +15,8 @@ export interface ChallengeProofShareCardStats {
   weeklyVolume: number;
   challengeVolume: number;
   bestSetToday: string;
+  daysLogged: number;
+  timeSpentMinutes: number;
   streakDays: number;
   weightGoalProgress: string;
   workoutsAccountedFor: number;
@@ -33,6 +35,17 @@ function formatVolume(value: number) {
 
 function formatReadiness(value: number | null) {
   return value === null ? "N/A" : String(value);
+}
+
+function formatTimeSpent(minutes: number) {
+  if (minutes <= 0) {
+    return "0m";
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  return hours > 0 ? `${hours}h ${remainingMinutes}m` : `${remainingMinutes}m`;
 }
 
 function ShareMetric({ label, value, variant = "default" }: { label: string; value: string; variant?: "default" | "accent" }) {
@@ -87,7 +100,7 @@ export function ChallengeProofShareCard({ generatedOnLabel, stats }: ChallengePr
         <ShareMetric label="Today Volume" value={formatVolume(stats.todayVolume)} />
         <ShareMetric label="Weekly Volume" value={formatVolume(stats.weeklyVolume)} />
         <ShareMetric label="Challenge Volume" value={formatVolume(stats.challengeVolume)} variant="accent" />
-        <ShareMetric label="Streak" value={`${stats.streakDays} days`} />
+        <ShareMetric label="Time Spent" value={formatTimeSpent(stats.timeSpentMinutes)} />
       </View>
 
       <View style={styles.bestSetPanel}>
@@ -99,12 +112,12 @@ export function ChallengeProofShareCard({ generatedOnLabel, stats }: ChallengePr
 
       <View style={styles.bottomGrid}>
         <View style={styles.statPill}>
-          <Text style={styles.pillValue}>{stats.streakDays}</Text>
-          <Text style={styles.pillLabel}>day streak</Text>
+          <Text style={styles.pillValue}>{stats.daysLogged}</Text>
+          <Text style={styles.pillLabel}>days logged</Text>
         </View>
         <View style={styles.statPill}>
-          <Text style={styles.pillValue}>W{stats.currentWeek}</Text>
-          <Text style={styles.pillLabel}>challenge week</Text>
+          <Text style={styles.pillValue}>{stats.streakDays}</Text>
+          <Text style={styles.pillLabel}>day streak</Text>
         </View>
         <View style={styles.statPill}>
           <Text style={styles.pillValue}>{stats.workoutsAccountedFor}</Text>

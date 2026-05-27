@@ -12,7 +12,8 @@ interface DailyReadinessCheckInProps {
   isSaving: boolean;
   error: string | null;
   onChange: (value: DailyReadinessCheckInValue) => void;
-  onSubmit: (value: DailyReadinessCheckInValue) => void;
+  onSave: (value: DailyReadinessCheckInValue) => void;
+  onGenerateAdaptive: (value: DailyReadinessCheckInValue) => void;
 }
 
 const sorenessGroups: Array<keyof MuscleGroupSoreness> = ["chest", "back", "shoulders", "arms", "legs", "core"];
@@ -45,7 +46,7 @@ function clampByKey(key: NumericCheckInKey, value: number) {
   return clamp(value, 0, 10);
 }
 
-export function DailyReadinessCheckIn({ value, isSaving, error, onChange, onSubmit }: DailyReadinessCheckInProps) {
+export function DailyReadinessCheckIn({ value, isSaving, error, onChange, onSave, onGenerateAdaptive }: DailyReadinessCheckInProps) {
   const [numberDrafts, setNumberDrafts] = useState<Record<NumericCheckInKey, string>>({
     sleepHours: formatDraftValue(value.sleepHours),
     energyLevel: formatDraftValue(value.energyLevel),
@@ -147,16 +148,22 @@ export function DailyReadinessCheckIn({ value, isSaving, error, onChange, onSubm
     };
   };
 
-  const handleSubmit = () => {
+  const handleAction = (action: "save" | "generate") => {
     const normalizedValue = normalizeDrafts();
     onChange(normalizedValue);
-    onSubmit(normalizedValue);
+
+    if (action === "save") {
+      onSave(normalizedValue);
+      return;
+    }
+
+    onGenerateAdaptive(normalizedValue);
   };
 
   return (
-    <SectionCard title="Daily Readiness Check-In" eyebrow="Before generation">
+    <SectionCard title="Daily Readiness Check-In" eyebrow="Save or adapt">
       <Text style={styles.copy}>
-        Daily adaptation works best when the inputs are honest. This is training guidance, not medical care.
+        Complete the check-in, then save it as today's readiness. You can generate an adaptive workout from it or start the planned session as-is.
       </Text>
       <View style={styles.grid}>
         <FormField
@@ -220,9 +227,15 @@ export function DailyReadinessCheckIn({ value, isSaving, error, onChange, onSubm
         textAlignVertical="top"
       />
       <PrimaryButton
-        label={isSaving ? "Saving check-in..." : "Generate Adaptive Workout"}
-        onPress={handleSubmit}
+        label={isSaving ? "Saving check-in..." : "Save Daily Readiness"}
+        onPress={() => handleAction("save")}
         disabled={isSaving}
+      />
+      <PrimaryButton
+        label={isSaving ? "Saving check-in..." : "Generate Adaptive Workout"}
+        onPress={() => handleAction("generate")}
+        disabled={isSaving}
+        variant="ghost"
       />
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <Text style={styles.storageText}>

@@ -74,6 +74,7 @@ export function buildChallengeProofSummary(
     currentDay,
     currentWeek: Math.ceil(currentDay / 7),
     completionPercentage: calculateCompletionPercentage(logs, config),
+    daysLogged: new Set(logs.map((log) => log.logDate)).size,
     workoutsAccountedFor: calculateAccountedWorkoutCount(logs),
     workoutsCompleted: logs.filter((log) => log.workoutCompleted).length,
     workoutsCompletedThisWeek: logs.filter((log) => log.workoutCompleted && startOfLocalDay(new Date(log.logDate)) >= weekStart).length,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -133,6 +133,19 @@ function deriveBestSetToday(sets: WorkoutSetLog[]): string | null {
   return `${weight} lb × ${reps}`;
 }
 
+function formatDuration(totalSeconds: number) {
+  const safeSeconds = Math.max(Math.floor(totalSeconds), 0);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export default function WorkoutSessionScreen() {
   const params = useLocalSearchParams<{ dayId: string; weekIndex?: string }>();
   const { isPro, status: subscriptionStatus } = useSubscription();
@@ -147,7 +160,10 @@ export default function WorkoutSessionScreen() {
   const [isSavingWeight, setIsSavingWeight] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weightError, setWeightError] = useState<string | null>(null);
-  const [sessionStartedAt] = useState(() => new Date().toISOString());
+  const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
+  const didHydrateSession = useRef(false);
   const [healthWriteMessage, setHealthWriteMessage] = useState<string | null>(null);
 
   const handleExercisePress = (name: string, slug?: string) => {
@@ -216,15 +232,23 @@ export default function WorkoutSessionScreen() {
             getScheduledWorkoutLogId(selectedDay.id, weekIndex),
           ),
         ]);
+        const startedAt = existingLog?.startedAt ?? new Date().toISOString();
         const mergedLog = {
           ...buildWorkoutDayLog(selectedDay, existingLog),
           dayId: getScheduledWorkoutLogId(selectedDay.id, weekIndex),
           dayTitle: `Week ${weekIndex + 1}: ${selectedDay.title}`,
+          startedAt,
         };
 
         if (isMounted) {
           setDay(selectedDay);
           setLog(mergedLog);
+          setSessionStartedAt(startedAt);
+          setElapsedSeconds(
+            mergedLog.durationSeconds ??
+              Math.max(Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000), 0),
+          );
+          didHydrateSession.current = true;
           setPriorPerformanceByExercise(priorPerformance);
           setTodayWeight(todayWeightLog ? String(todayWeightLog.weight) : "");
           setSavedTodayWeight(todayWeightLog ? String(todayWeightLog.weight) : "");
@@ -249,6 +273,46 @@ export default function WorkoutSessionScreen() {
       isMounted = false;
     };
   }, [isPro, params.dayId, params.weekIndex, subscriptionStatus]);
+
+  useEffect(() => {
+    if (!log?.startedAt || log.isCompleted) {
+      return;
+    }
+
+    const updateElapsed = () => {
+      setElapsedSeconds(Math.max(Math.floor((Date.now() - new Date(log.startedAt as string).getTime()) / 1000), 0));
+    };
+
+    updateElapsed();
+    const timer = setInterval(updateElapsed, 1000);
+
+    return () => clearInterval(timer);
+  }, [log?.isCompleted, log?.startedAt]);
+
+  useEffect(() => {
+    if (!log || !didHydrateSession.current || log.isCompleted) {
+      return;
+    }
+
+    const saveTimer = setTimeout(() => {
+      const draftLog: WorkoutDayLog = {
+        ...log,
+        startedAt: log.startedAt ?? sessionStartedAt,
+        durationSeconds: Math.max(Math.floor((Date.now() - new Date(log.startedAt ?? sessionStartedAt).getTime()) / 1000), 0),
+      };
+
+      void replaceWorkoutDayLog(draftLog)
+        .then(() => {
+          setLastDraftSavedAt(new Date().toISOString());
+          setError(null);
+        })
+        .catch((draftSaveError) => {
+          setError(draftSaveError instanceof Error ? draftSaveError.message : "Unable to save this workout draft.");
+        });
+    }, 900);
+
+    return () => clearTimeout(saveTimer);
+  }, [log, sessionStartedAt]);
 
   const updateExerciseNotes = (exerciseSlug: string, value: string) => {
     setLog((current) => {
@@ -346,10 +410,14 @@ export default function WorkoutSessionScreen() {
         setWeightError(null);
       }
 
+      const completedAt = new Date().toISOString();
+      const startedAt = log.startedAt ?? sessionStartedAt;
       const updatedLog: WorkoutDayLog = {
         ...log,
         isCompleted: true,
-        completedAt: new Date().toISOString(),
+        startedAt,
+        completedAt,
+        durationSeconds: Math.max(Math.floor((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000), 0),
       };
 
       await replaceWorkoutDayLog(updatedLog);
@@ -357,7 +425,7 @@ export default function WorkoutSessionScreen() {
       setError(null);
       const healthWriteResult = await saveCompletedWorkoutToHealthKit({
         title: updatedLog.dayTitle,
-        startDate: sessionStartedAt,
+        startDate: updatedLog.startedAt ?? sessionStartedAt,
         endDate: updatedLog.completedAt ?? new Date().toISOString(),
       });
 
@@ -373,6 +441,26 @@ export default function WorkoutSessionScreen() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleBack = async () => {
+    if (!log || log.isCompleted) {
+      router.back();
+      return;
+    }
+
+    try {
+      await replaceWorkoutDayLog({
+        ...log,
+        startedAt: log.startedAt ?? sessionStartedAt,
+        durationSeconds: Math.max(Math.floor((Date.now() - new Date(log.startedAt ?? sessionStartedAt).getTime()) / 1000), 0),
+      });
+      setLastDraftSavedAt(new Date().toISOString());
+    } catch {
+      // The autosave effect will surface save errors while the user stays on this screen.
+    }
+
+    router.back();
   };
 
   const handleSaveTodayWeight = async () => {
@@ -714,9 +802,9 @@ export default function WorkoutSessionScreen() {
       subtitle={day.notes}
       footer={
         <View style={styles.footerRow}>
-          <PrimaryButton label="Back" onPress={() => router.back()} variant="ghost" style={styles.backButton} />
+          <PrimaryButton label="Back" onPress={() => void handleBack()} variant="ghost" style={styles.backButton} />
           <PrimaryButton
-            label={isSaving ? "Saving session..." : log.isCompleted ? "Update session log" : "Save session log"}
+            label={isSaving ? "Saving session..." : log.isCompleted ? "Update Session Log" : "Finish & Save Workout"}
             onPress={() => void handleSave()}
             style={styles.saveButton}
           />
@@ -766,6 +854,14 @@ export default function WorkoutSessionScreen() {
         </Text>
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Time</Text>
+            <Text style={styles.summaryValue}>
+              {formatDuration(log.isCompleted && log.durationSeconds !== null && log.durationSeconds !== undefined
+                ? log.durationSeconds
+                : elapsedSeconds)}
+            </Text>
+          </View>
+          <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Completed sets</Text>
             <Text style={styles.summaryValue}>{volumeSummary.totalCompletedSets}</Text>
           </View>
@@ -778,6 +874,13 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.summaryValue}>{volumeSummary.totalWorkoutVolume}</Text>
           </View>
         </View>
+        {!log.isCompleted ? (
+          <Text style={styles.draftText}>
+            {lastDraftSavedAt
+              ? `Draft saved ${new Date(lastDraftSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+              : "Your set entries save automatically while this session is open."}
+          </Text>
+        ) : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {healthWriteMessage ? <Text style={styles.healthWriteText}>{healthWriteMessage}</Text> : null}
       </SectionCard>
@@ -1076,6 +1179,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  draftText: {
+    color: colors.primarySoft,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   footerRow: {
     flexDirection: "row",

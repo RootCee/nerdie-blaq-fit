@@ -108,7 +108,9 @@ export interface WorkoutDayLog {
   dayId: string;
   dayTitle: string;
   isCompleted: boolean;
+  startedAt?: string | null;
   completedAt: string | null;
+  durationSeconds?: number | null;
   exerciseLogs: WorkoutExerciseLog[];
 }
 
@@ -175,6 +177,7 @@ export interface WorkoutHistoryItem {
   dayTitle: string;
   completedAt: string;
   completionStatus: "completed";
+  durationSeconds: number | null;
   exerciseSummary: string;
   notesPreview: string | null;
   loggedExerciseCount: number;

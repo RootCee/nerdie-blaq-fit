@@ -163,7 +163,7 @@ function getTodayActionCopy(hasAdaptiveWorkout: boolean, hasWorkoutToday: boolea
     return "Your readiness check-in is connected to today's workout. Review the adjustment, then start the session.";
   }
 
-  return "Choose your path, complete readiness, then generate today's adjusted workout before you train.";
+  return "Choose your path, complete readiness, then save it. You can generate an adaptive workout or start the planned session.";
 }
 
 function buildScheduledPlan(plan: WorkoutPlan, planStartDate = startOfProgramWeek(new Date()).toISOString()): WorkoutPlan {
@@ -584,6 +584,21 @@ export default function WorkoutScreen() {
     }
   };
 
+  const handleSaveDailyReadiness = async (checkInOverride?: DailyReadinessCheckInValue) => {
+    setIsSavingCheckIn(true);
+    setCheckInError(null);
+    setAdaptiveError(null);
+
+    try {
+      const savedCheckIn = await saveDailyCheckIn(checkInOverride ?? dailyCheckIn);
+      setDailyCheckIn(savedCheckIn);
+    } catch (saveError) {
+      setCheckInError(saveError instanceof Error ? saveError.message : "Check-in could not be saved.");
+    } finally {
+      setIsSavingCheckIn(false);
+    }
+  };
+
   const handleGenerateAdaptiveWorkout = async (checkInOverride?: DailyReadinessCheckInValue) => {
     if (!plan) {
       setAdaptiveError("No workout plan is available yet. Refresh your plan and try again.");
@@ -783,7 +798,8 @@ export default function WorkoutScreen() {
               isSaving={isSavingCheckIn}
               error={checkInError}
               onChange={setDailyCheckIn}
-              onSubmit={(checkIn) => void handleGenerateAdaptiveWorkout(checkIn)}
+              onSave={(checkIn) => void handleSaveDailyReadiness(checkIn)}
+              onGenerateAdaptive={(checkIn) => void handleGenerateAdaptiveWorkout(checkIn)}
             />
             {adaptiveResult ? (
               <SectionCard title="Today's Adjustment" eyebrow="Recovery Score">
