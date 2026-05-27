@@ -169,6 +169,12 @@ export default function MealsScreen() {
   };
 
   const refreshSupplementLogs = async () => {
+    if (!isPro) {
+      setSupplementLogs([]);
+      setRecentSupplementLogs([]);
+      return;
+    }
+
     const [entries, recentEntries] = await Promise.all([
       loadSupplementLogsForDate(selectedDate),
       loadRecentSupplementLogs(8),
@@ -221,6 +227,13 @@ export default function MealsScreen() {
     let isMounted = true;
 
     async function hydrateSupplementLog() {
+      if (!isPro) {
+        setSupplementLogs([]);
+        setRecentSupplementLogs([]);
+        setSupplementLogError(null);
+        return;
+      }
+
       try {
         const [entries, recentEntries] = await Promise.all([
           loadSupplementLogsForDate(selectedDate),
@@ -244,7 +257,7 @@ export default function MealsScreen() {
     return () => {
       isMounted = false;
     };
-  }, [selectedDate]);
+  }, [isPro, selectedDate]);
 
   const handleSaveFoodLog = async () => {
     setIsFoodLogSaving(true);
@@ -271,6 +284,11 @@ export default function MealsScreen() {
   };
 
   const handleSaveCurrentMealForLater = async () => {
+    if (!isPro) {
+      setFoodLogError("Saved meals are a Pro feature.");
+      return;
+    }
+
     setIsSavedMealSaving(true);
     setFoodLogError(null);
 
@@ -285,6 +303,11 @@ export default function MealsScreen() {
   };
 
   const handleEstimateFood = async () => {
+    if (!isPro) {
+      setFoodLogError("AI meal estimates are a Pro feature.");
+      return;
+    }
+
     setIsEstimatingFood(true);
     setFoodLogError(null);
     setNutritionEstimate(null);
@@ -315,6 +338,11 @@ export default function MealsScreen() {
   };
 
   const handleSaveSupplementLog = async () => {
+    if (!isPro) {
+      setSupplementLogError("Supplement and add-on logging is a Pro feature.");
+      return;
+    }
+
     setIsSupplementSaving(true);
     setSupplementLogError(null);
 
@@ -361,6 +389,11 @@ export default function MealsScreen() {
   };
 
   const fillFoodFromSavedMeal = (entry: SavedMealEntry) => {
+    if (!isPro) {
+      setFoodLogError("Saved meals are a Pro feature.");
+      return;
+    }
+
     const [amount, ...noteParts] = entry.servingNotes.split(" - ");
 
     setMealType(entry.mealType);
@@ -376,6 +409,11 @@ export default function MealsScreen() {
   };
 
   const repeatFoodLog = async (entry: FoodLogEntry) => {
+    if (!isPro) {
+      setFoodLogError("Repeating recent meals is a Pro feature.");
+      return;
+    }
+
     setIsFoodLogSaving(true);
     setFoodLogError(null);
 
@@ -399,6 +437,11 @@ export default function MealsScreen() {
   };
 
   const repeatSavedMeal = async (entry: SavedMealEntry) => {
+    if (!isPro) {
+      setFoodLogError("Saved meals are a Pro feature.");
+      return;
+    }
+
     setIsFoodLogSaving(true);
     setFoodLogError(null);
 
@@ -422,6 +465,11 @@ export default function MealsScreen() {
   };
 
   const saveRecentFoodForLater = async (entry: FoodLogEntry) => {
+    if (!isPro) {
+      setFoodLogError("Saved meals are a Pro feature.");
+      return;
+    }
+
     setIsSavedMealSaving(true);
     setFoodLogError(null);
 
@@ -450,6 +498,11 @@ export default function MealsScreen() {
   };
 
   const fillSupplementFromLog = (entry: SupplementLogEntry) => {
+    if (!isPro) {
+      setSupplementLogError("Supplement and add-on logging is a Pro feature.");
+      return;
+    }
+
     setSupplementTiming(entry.timing);
     setSupplementName(entry.supplementName);
     setSupplementAmount(entry.amount);
@@ -462,6 +515,11 @@ export default function MealsScreen() {
   };
 
   const repeatSupplementLog = async (entry: SupplementLogEntry) => {
+    if (!isPro) {
+      setSupplementLogError("Supplement and add-on logging is a Pro feature.");
+      return;
+    }
+
     setIsSupplementSaving(true);
     setSupplementLogError(null);
 
@@ -525,7 +583,7 @@ export default function MealsScreen() {
         <View style={styles.statsRow}>
           <StatChip label="Total calories" value={`${Math.round(combinedTotals.calories)} cal`} />
           <StatChip label="Food" value={`${Math.round(foodTotals.calories)} cal`} />
-          <StatChip label="Add-ons" value={`${Math.round(supplementTotals.calories)} cal`} />
+          {isPro ? <StatChip label="Add-ons" value={`${Math.round(supplementTotals.calories)} cal`} /> : null}
           <StatChip label="Protein" value={`${Math.round(combinedTotals.proteinG)}g`} />
           <StatChip label="Carbs" value={`${Math.round(combinedTotals.carbsG)}g`} />
           <StatChip label="Fat" value={`${Math.round(combinedTotals.fatG)}g`} />
@@ -533,7 +591,9 @@ export default function MealsScreen() {
           <StatChip label="Net" value={`${Math.round(netCalories)} cal`} />
         </View>
         <Text style={styles.helperText}>
-          Total calories include food plus supplement/add-on calories. Net subtracts Apple Health active calories when available.
+          {isPro
+            ? "Total calories include food plus supplement/add-on calories. Net subtracts Apple Health active calories when available."
+            : "Free nutrition totals include manual food logs. Pro unlocks add-ons, supplements, AI estimates, saved meals, and recent meal repeats."}
         </Text>
         {guidance ? (
           <>
@@ -555,12 +615,14 @@ export default function MealsScreen() {
           placeholder="1 bowl, 8 oz, 1 cup..."
           helper="Use the amount you actually ate. AI estimates are easier when the serving is specific."
         />
-        <PrimaryButton
-          label={isEstimatingFood ? "Estimating..." : "Estimate Calories & Macros"}
-          onPress={() => void handleEstimateFood()}
-          disabled={isEstimatingFood || isFoodLogSaving}
-          variant="ghost"
-        />
+        {isPro ? (
+          <PrimaryButton
+            label={isEstimatingFood ? "Estimating..." : "Estimate Calories & Macros"}
+            onPress={() => void handleEstimateFood()}
+            disabled={isEstimatingFood || isFoodLogSaving}
+            variant="ghost"
+          />
+        ) : null}
         {nutritionEstimate ? (
           <View style={styles.estimateCard}>
             <Text style={styles.estimateTitle}>Estimated nutrition</Text>
@@ -592,16 +654,26 @@ export default function MealsScreen() {
           onPress={() => void handleSaveFoodLog()}
           disabled={isFoodLogSaving}
         />
-        <PrimaryButton
-          label={isSavedMealSaving ? "Saving meal..." : "Save Meal for Later"}
-          onPress={() => void handleSaveCurrentMealForLater()}
-          disabled={isSavedMealSaving || isFoodLogSaving}
-          variant="ghost"
-        />
+        {isPro ? (
+          <PrimaryButton
+            label={isSavedMealSaving ? "Saving meal..." : "Save Meal for Later"}
+            onPress={() => void handleSaveCurrentMealForLater()}
+            disabled={isSavedMealSaving || isFoodLogSaving}
+            variant="ghost"
+          />
+        ) : null}
         {foodLogError ? <Text style={styles.errorText}>{foodLogError}</Text> : null}
       </SectionCard>
 
-      {savedMeals.length ? (
+      {!isPro ? (
+        <ProLockCard
+          title="Pro Meal Tools"
+          description="Unlock AI calorie estimates, saved meals, 24-hour recent meal repeats, supplement/add-on logging, grocery lists, swaps, and supplement ideas."
+          feature="Pro meal tools"
+        />
+      ) : null}
+
+      {isPro && savedMeals.length ? (
         <SectionCard title="Saved meals" eyebrow="Add anytime">
           {savedMeals.map((entry) => (
             <View key={`saved-${entry.id}`} style={styles.repeatCard}>
@@ -635,7 +707,7 @@ export default function MealsScreen() {
         </SectionCard>
       ) : null}
 
-      {recentFoodLogs.length ? (
+      {isPro && recentFoodLogs.length ? (
         <SectionCard title="Recent meals" eyebrow="Last 24 hours">
           {recentFoodLogs.map((entry) => (
             <View key={`recent-${entry.id}`} style={styles.repeatCard}>
@@ -704,6 +776,7 @@ export default function MealsScreen() {
         )}
       </SectionCard>
 
+      {isPro ? (
       <SectionCard title="Supplement Log" eyebrow="Timing + add-ons">
         <Text style={styles.helperText}>
           Track shakes, creatine, BCAAs, vitamins, electrolytes, and other add-ons. Use Food Log for shakes or bars with meaningful calories.
@@ -792,6 +865,7 @@ export default function MealsScreen() {
           <Text style={styles.copy}>No supplements logged for this date yet.</Text>
         )}
       </SectionCard>
+      ) : null}
     </>
   );
 
@@ -898,7 +972,7 @@ export default function MealsScreen() {
       ) : (
         <ProLockCard
           title="Advanced Nutrition"
-          description="Daily calorie and macro targets stay free. Pro unlocks meal prep guides, grocery lists, swaps, and supplement ideas."
+          description="Daily calorie and macro targets stay free. Pro unlocks meal prep guides, grocery lists, swaps, AI meal estimates, saved meals, recent meal repeats, and supplement/add-on logging."
           feature="advanced nutrition features"
         />
       )}

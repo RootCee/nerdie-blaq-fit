@@ -3,9 +3,11 @@ import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { ProLockCard } from "@/components/ProLockCard";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { getExerciseMetadata } from "@/features/workouts/exercise-library";
+import { useSubscription } from "@/store/subscription-store";
 import { colors, spacing } from "@/theme";
 
 function formatSubstitutionType(type: string) {
@@ -18,6 +20,7 @@ function formatSubstitutionType(type: string) {
 export default function ExerciseDetailScreen() {
   const params = useLocalSearchParams<{ slug: string; name?: string }>();
   const metadata = getExerciseMetadata(params.slug, params.name);
+  const { isPro } = useSubscription();
   const [isImageExpanded, setIsImageExpanded] = useState(false);
 
   if (__DEV__) {
@@ -99,44 +102,52 @@ export default function ExerciseDetailScreen() {
           )}
         </SectionCard>
 
-        <SectionCard title="Smart swaps" eyebrow="Keep the pattern">
-          {metadata.substitutions.length ? (
-            metadata.substitutions.map((substitution) => {
-              const content = (
-                <View style={styles.substitutionCard}>
-                  <Text style={styles.substitutionType}>{formatSubstitutionType(substitution.type)}</Text>
-                  <Text style={styles.substitutionName}>{substitution.name}</Text>
-                  <Text style={styles.copy}>{substitution.reason}</Text>
-                  <Text style={styles.substitutionLink}>
-                    {substitution.existsInLibrary ? "Open swap notes" : "Swap notes coming soon"}
-                  </Text>
-                </View>
-              );
-
-              if (substitution.existsInLibrary) {
-                return (
-                  <Pressable
-                    key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/exercise/[slug]" as never,
-                        params: { slug: substitution.slug, name: substitution.name } as never,
-                      } as never)
-                    }
-                  >
-                    {content}
-                  </Pressable>
+        {isPro ? (
+          <SectionCard title="Smart swaps" eyebrow="Keep the pattern">
+            {metadata.substitutions.length ? (
+              metadata.substitutions.map((substitution) => {
+                const content = (
+                  <View style={styles.substitutionCard}>
+                    <Text style={styles.substitutionType}>{formatSubstitutionType(substitution.type)}</Text>
+                    <Text style={styles.substitutionName}>{substitution.name}</Text>
+                    <Text style={styles.copy}>{substitution.reason}</Text>
+                    <Text style={styles.substitutionLink}>
+                      {substitution.existsInLibrary ? "Open swap notes" : "Swap notes coming soon"}
+                    </Text>
+                  </View>
                 );
-              }
 
-              return <View key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}>{content}</View>;
-            })
-          ) : (
-            <Text style={styles.copy}>
-              Swap suggestions haven’t been added for this movement yet. Check back as the Nerdie Blaq Fit movement library grows.
-            </Text>
-          )}
-        </SectionCard>
+                if (substitution.existsInLibrary) {
+                  return (
+                    <Pressable
+                      key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/exercise/[slug]" as never,
+                          params: { slug: substitution.slug, name: substitution.name } as never,
+                        } as never)
+                      }
+                    >
+                      {content}
+                    </Pressable>
+                  );
+                }
+
+                return <View key={`${metadata.slug}-${substitution.slug}-${substitution.type}`}>{content}</View>;
+              })
+            ) : (
+              <Text style={styles.copy}>
+                Swap suggestions haven’t been added for this movement yet. Check back as the Nerdie Blaq Fit movement library grows.
+              </Text>
+            )}
+          </SectionCard>
+        ) : (
+          <ProLockCard
+            title="Smart Exercise Swaps"
+            description="Pro unlocks substitution workouts inside session movement notes, so you can keep the same pattern when equipment, soreness, or setup changes."
+            feature="smart exercise swaps"
+          />
+        )}
       </Screen>
 
       <Modal

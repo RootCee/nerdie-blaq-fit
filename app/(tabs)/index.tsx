@@ -341,7 +341,7 @@ export default function HomeScreen() {
         try {
           const [foodLogs, supplementLogs, workoutHistory] = await Promise.all([
             loadFoodLogsForDate(today),
-            loadSupplementLogsForDate(today),
+            isPro ? loadSupplementLogsForDate(today) : Promise.resolve([]),
             loadWorkoutHistory(),
           ]);
           const foodTotals = calculateFoodLogDailyTotals(foodLogs);
@@ -385,7 +385,7 @@ export default function HomeScreen() {
       return () => {
         isMounted = false;
       };
-    }, []),
+    }, [isPro]),
   );
 
   const currentWeightPounds = useMemo(() => parseWeightInPounds(profile.weight), [profile.weight]);

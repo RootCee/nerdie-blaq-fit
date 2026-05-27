@@ -135,7 +135,7 @@ export default function PaywallScreen() {
           ))}
         </View>
         <Text style={styles.helperText}>
-          Foundation training, basic workout tracking, progress history, and learning tools remain available without Pro.
+          Foundation training, basic workout tracking, manual food logging, daily nutrition targets, progress history, and learning tools remain available without Pro.
         </Text>
         {status === "loading" ? (
           <View style={styles.loadingRow}>
