@@ -340,7 +340,7 @@ function createCoreFinisher(
   index: number,
 ): CoreFinisherBlock {
   const frontCoreOptions = ["Dead bug", "Plank", "Hollow hold", "Bird dog"];
-  const sideCoreOptions = ["Side plank", "Bird dog", "Slow mountain climber", "Dead bug"];
+  const sideCoreOptions = ["Side plank", "Side plank hip dip", "Russian twist", "Cable woodchop", "Hanging oblique raise"];
 
   if (emphasis === "front-core-trunk-stability") {
     return {
@@ -355,12 +355,12 @@ function createCoreFinisher(
   }
 
   return {
-    title: "Core finisher",
+    title: "Oblique finisher",
     emphasis,
-    notes: "A short side-core and anti-rotation finish to build control without draining recovery.",
+    notes: "A short oblique-only finish to train side-core control without mixing in front-core work today.",
     exercises: [
       exercise(sideCoreOptions[index % sideCoreOptions.length], "2", "20-30 sec each side", "15 sec", "Stay long through the spine."),
-      exercise(sideCoreOptions[(index + 1) % sideCoreOptions.length], "2", "8-10 each side", "30 sec", "Move cleanly and keep the ribs quiet."),
+      exercise(sideCoreOptions[(index + 1) % sideCoreOptions.length], "2", "8-12 each side", "30 sec", "Move cleanly through the obliques and keep the ribs quiet."),
     ],
   };
 }
@@ -381,6 +381,7 @@ function createRotatingAbsFinisher(index: number, library: ExerciseLibrary): Cor
 }
 
 function createAdvancedAbsBlock(index: number): CoreFinisherBlock {
+  const isCoreDay = index % 2 === 0;
   const lowerAbsPool = [
     "Hanging knee raise",
     "Hanging leg raise",
@@ -397,50 +398,46 @@ function createAdvancedAbsBlock(index: number): CoreFinisherBlock {
   const obliquesPool = [
     "Russian twist",
     "Cable woodchop",
-    "Hanging oblique knee raise",
+    "Landmine twist",
     "Side plank hip dip",
-  ];
-  const coreStabilityPool = [
-    "Plank",
-    "Hollow hold",
-    "Dead bug",
-    "Bird dog",
   ];
 
   const lowerAbs = pick(lowerAbsPool, index);
   const upperAbs = pick(upperAbsPool, index);
   const obliques = pick(obliquesPool, index);
-  const stability = pick(coreStabilityPool, index);
+
+  if (!isCoreDay) {
+    return {
+      title: "Blaq Oblique System",
+      emphasis: "obliques-side-core",
+      notes: "Today is obliques only. Keep the side-core work strict and controlled without adding front-ab volume.",
+      exercises: [
+        exercise(obliques, "3-5 rounds", "12-20 total or 8-12 each side", "20-30 sec", "Stay smooth side to side and own the oblique contraction."),
+        exercise(pick(obliquesPool, index + 1), "3-5 rounds", "20-35 sec each side", "30-45 sec", "Hold position and control rotation through the side body."),
+      ],
+    };
+  }
 
   return {
     title: "Blaq Core System",
     emphasis: "front-core-trunk-stability",
-    notes: "Nerdie Blaq Fit finishes advanced sessions with dense standalone ab work: one lower-ab move, one upper-ab move, one oblique pattern, and one bracing hold. No supersets here. Level 1: 3 rounds. Level 2: 4 rounds. Level 3: 5 rounds.",
+    notes: "Today is front-core only. Train lower abs, upper abs, and bracing without adding oblique volume.",
     exercises: [
       exercise(lowerAbs, "3-5 rounds", "15-25 reps", "20-30 sec", "Lower abs first. Keep the pelvis controlled and the reps clean."),
       exercise(upperAbs, "3-5 rounds", "15-25 reps", "20-30 sec", "Move through a full but controlled trunk-flexion range."),
-      exercise(obliques, "3-5 rounds", "20 total reps or 10 each side", "20-30 sec", "Stay smooth side to side and own the oblique contraction."),
-      exercise(stability, "3-5 rounds", "45-60 sec", "30-45 sec", "Brace hard and build time under tension without losing shape."),
     ],
   };
 }
 
 function createFocusCoreRotation(index: number, focus: TrainingFocusConfig): CoreFinisherBlock {
-  const rotation = [
+  const isCoreDay = index % 2 === 0;
+  const coreRotation = [
     {
       title: "Lower abs control",
       emphasis: "front-core-trunk-stability" as const,
       exercises: [
         ["Dead bug", "2-3", "8-12 each side", "20 sec", "Control the pelvis and keep the low back quiet."],
         ["Laying leg raise", "2-3", "8-12", "30 sec", "Use a range you can own without swinging."],
-      ],
-    },
-    {
-      title: "Anti-rotation stability",
-      emphasis: "obliques-side-core" as const,
-      exercises: [
-        ["Bird dog", "2-3", "8-10 each side", "20 sec", "Reach long and resist hip rotation."],
-        ["Side plank", "2-3", "20-35 sec each side", "30 sec", "Stay stacked and breathe behind the brace."],
       ],
     },
     {
@@ -460,14 +457,6 @@ function createFocusCoreRotation(index: number, focus: TrainingFocusConfig): Cor
       ],
     },
     {
-      title: "Oblique control",
-      emphasis: "obliques-side-core" as const,
-      exercises: [
-        ["Side plank hip dip", "2-3", "8-12 each side", "20 sec", "Move slowly through the side body."],
-        ["Russian twist", "2-3", "12-20 total", "30 sec", "Rotate with control instead of speed."],
-      ],
-    },
-    {
       title: "Core mobility finisher",
       emphasis: "front-core-trunk-stability" as const,
       exercises: [
@@ -476,12 +465,31 @@ function createFocusCoreRotation(index: number, focus: TrainingFocusConfig): Cor
       ],
     },
   ];
-  const selected = rotation[index % rotation.length];
+  const obliqueRotation = [
+    {
+      title: "Oblique control",
+      emphasis: "obliques-side-core" as const,
+      exercises: [
+        ["Side plank hip dip", "2-3", "8-12 each side", "20 sec", "Move slowly through the side body."],
+        ["Russian twist", "2-3", "12-20 total", "30 sec", "Rotate with control instead of speed."],
+      ],
+    },
+    {
+      title: "Side-core stability",
+      emphasis: "obliques-side-core" as const,
+      exercises: [
+        ["Side plank", "2-3", "20-35 sec each side", "20 sec", "Stay stacked and own the side body."],
+        ["Cable woodchop", "2-3", "8-12 each side", "30 sec", "Rotate with control and stop before momentum takes over."],
+      ],
+    },
+  ];
+  const rotation = isCoreDay ? coreRotation : obliqueRotation;
+  const selected = rotation[Math.floor(index / 2) % rotation.length];
 
   return {
     title: selected.title,
     emphasis: selected.emphasis,
-    notes: `${focus.title} rotates core emphasis daily so the trunk gets stronger without repeating the same pattern every session.`,
+    notes: `${focus.title} alternates core and obliques by day, so this finisher stays focused instead of training both patterns in one session.`,
     exercises: selected.exercises.map(([name, sets, reps, rest, notes]) => exercise(name, sets, reps, rest, notes)),
   };
 }
@@ -747,6 +755,7 @@ function buildSplitDays(
     exercise(pick(library.pull, 3), prescription.sets, prescription.reps, prescription.rest, "Use the full line of pull."),
     exercise(pick(library.conditioning, 0), goal === "muscle-gain" ? "2" : "3", goal === "muscle-gain" ? "5-8 min" : "8-12 min", "As needed", "Nasal breathing pace if possible."),
   ];
+  const dayThreeCoreFinisher = createCoreFinisher("front-core-trunk-stability", 2);
   const upperTwo = buildDay(
     "day-3",
     "Day 3: Upper Volume",
@@ -756,7 +765,9 @@ function buildSplitDays(
     {
       supersets: [
         createSupersetGroup("day-3-superset-1", "Accessory press/row superset", [dayThreeExercises[2], dayThreeExercises[3]], "45-60 sec after both exercises", "Use this pairing to keep upper-body volume efficient."),
+        createSupersetGroup("day-3-core-finisher", "Core finisher superset", dayThreeCoreFinisher.exercises, "30 sec after both exercises", "Short front-core finish for trunk stability."),
       ],
+      coreFinisher: dayThreeCoreFinisher,
     },
   );
 
@@ -766,7 +777,7 @@ function buildSplitDays(
     exercise(pick(library.squat, 3), prescription.sets, prescription.reps, prescription.rest, "Choose control over speed."),
     exercise(pick(library.hinge, 3), prescription.sets, prescription.reps, prescription.rest, "Pause briefly at the top."),
   ];
-  const dayFourCoreFinisher = createCoreFinisher("front-core-trunk-stability", 2);
+  const dayFourCoreFinisher = createCoreFinisher("obliques-side-core", 3);
   const lowerTwo = buildDay(
     "day-4",
     "Day 4: Lower Volume",
@@ -776,7 +787,7 @@ function buildSplitDays(
     {
       supersets: [
         createSupersetGroup("day-4-superset-1", "Accessory lower superset", [dayFourExercises[2], dayFourExercises[3]], "60 sec after both exercises", "Pair the later lower-body work to save time."),
-        createSupersetGroup("day-4-core-finisher", "Core finisher superset", dayFourCoreFinisher.exercises, "30 sec after both exercises", "Short trunk-stability work to finish the day cleanly."),
+        createSupersetGroup("day-4-core-finisher", "Oblique finisher superset", dayFourCoreFinisher.exercises, "30 sec after both exercises", "Short side-core work to finish the day cleanly."),
       ],
       coreFinisher: dayFourCoreFinisher,
     },
@@ -786,7 +797,7 @@ function buildSplitDays(
     exercise(pick(library.conditioning, 1), "3-4", "8-12 min", "60 sec", "Steady sustainable pace."),
     exercise(pick(library.conditioning, 2), "3", "45 sec", "30 sec", "Light, crisp movement."),
   ];
-  const conditioningCoreFinisher = createCoreFinisher("obliques-side-core", 3);
+  const conditioningCoreFinisher = createCoreFinisher("front-core-trunk-stability", 4);
   const conditioning = buildDay(
     "day-5",
     "Day 5: Conditioning + Core",
@@ -796,7 +807,7 @@ function buildSplitDays(
     {
       supersets: [
         createSupersetGroup("day-5-conditioning-superset", "Conditioning superset", conditioningExercises, "45 sec after both blocks", "Alternate the two conditioning pieces before resting."),
-        createSupersetGroup("day-5-core-finisher", "Core finisher superset", conditioningCoreFinisher.exercises, "30 sec after both exercises", "Finish with low-stress side-core work."),
+        createSupersetGroup("day-5-core-finisher", "Core finisher superset", conditioningCoreFinisher.exercises, "30 sec after both exercises", "Finish with low-stress front-core work."),
       ],
       coreFinisher: conditioningCoreFinisher,
     },
@@ -1291,10 +1302,10 @@ export function generateWorkoutPlan(
         ? "Mass & Power keeps the existing compound, chest/back, arm, and moderate-core training behavior."
         : `${selectedTrainingFocus.title} focus: ${selectedTrainingFocus.weeklyVolumeBias}`,
       selectedTrainingFocus.coreFrequency === "daily-rotating"
-        ? "Core rotates daily across lower abs, stability, glute bracing, upper abs, oblique control, and mobility instead of repeating the same ab pattern."
+        ? "Core and obliques alternate by workout day: Day 1 front core, Day 2 obliques, then repeat without mixing both patterns in one finisher."
         : "Core volume stays matched to the focus and recovery needs.",
       useAdvancedBodybuildingSplit
-        ? "Abs rotate deterministically from the front-core and oblique pools on every training day in this split."
+        ? "Abs alternate deterministically between front-core days and oblique days in this split."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
       useAdvancedBodybuildingSplit
         ? `Current advanced variation block uses week ${weekIndex + 1}, rotating the secondary chest press and main squat every 2 weeks.`

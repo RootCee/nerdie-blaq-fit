@@ -1,9 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ensureSupabaseSession, getAuthenticatedSupabaseUserId, getOnboardingPersistenceConfig, supabase } from "@/lib/supabase";
-import { FoodLogDailyTotals, FoodLogEntry, FoodLogEntryInput, FoodLogRow } from "@/types/nutrition";
+import { FoodLogDailyTotals, FoodLogEntry, FoodLogEntryInput, FoodLogRow, SavedMealEntry } from "@/types/nutrition";
 
 const LOCAL_FOOD_LOGS_KEY = "nerdie-blaq-fit:food-logs";
+const LOCAL_SAVED_MEALS_KEY = "nerdie-blaq-fit:saved-meals";
 
 function createLocalId() {
   return `food-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -131,6 +132,63 @@ export async function loadRecentFoodLogs(limit = 12): Promise<FoodLogEntry[]> {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
   }
+}
+
+async function loadLocalSavedMeals(): Promise<SavedMealEntry[]> {
+  const rawValue = await AsyncStorage.getItem(LOCAL_SAVED_MEALS_KEY);
+  return rawValue ? JSON.parse(rawValue) as SavedMealEntry[] : [];
+}
+
+async function saveLocalSavedMeals(meals: SavedMealEntry[]) {
+  await AsyncStorage.setItem(LOCAL_SAVED_MEALS_KEY, JSON.stringify(meals));
+}
+
+export async function loadSavedMeals(limit = 24): Promise<SavedMealEntry[]> {
+  return (await loadLocalSavedMeals())
+    .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
+    .slice(0, limit);
+}
+
+export async function saveMealForLater(input: FoodLogEntryInput, sourceLogId?: string | null): Promise<SavedMealEntry> {
+  if (!input.foodName.trim()) {
+    throw new Error("Add a food name before saving this meal.");
+  }
+
+  const now = new Date().toISOString();
+  const meal: SavedMealEntry = {
+    id: `saved-meal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    mealType: input.mealType,
+    foodName: input.foodName.trim(),
+    calories: Math.round(normalizeNumber(input.calories)),
+    proteinG: normalizeNumber(input.proteinG),
+    carbsG: normalizeNumber(input.carbsG),
+    fatG: normalizeNumber(input.fatG),
+    servingNotes: input.servingNotes.trim(),
+    savedAt: now,
+    sourceLogId: sourceLogId ?? null,
+  };
+  const existingMeals = await loadLocalSavedMeals();
+  const duplicateKey = `${meal.mealType}:${meal.foodName.toLowerCase()}:${meal.servingNotes.toLowerCase()}`;
+  const withoutDuplicate = existingMeals.filter((entry) =>
+    `${entry.mealType}:${entry.foodName.toLowerCase()}:${entry.servingNotes.toLowerCase()}` !== duplicateKey
+  );
+
+  await saveLocalSavedMeals([meal, ...withoutDuplicate]);
+
+  return meal;
+}
+
+export async function saveMealFromFoodLog(entry: FoodLogEntry): Promise<SavedMealEntry> {
+  return saveMealForLater({
+    logDate: entry.logDate,
+    mealType: entry.mealType,
+    foodName: entry.foodName,
+    calories: entry.calories,
+    proteinG: entry.proteinG,
+    carbsG: entry.carbsG,
+    fatG: entry.fatG,
+    servingNotes: entry.servingNotes,
+  }, entry.id);
 }
 
 export async function saveFoodLog(input: FoodLogEntryInput): Promise<FoodLogEntry> {

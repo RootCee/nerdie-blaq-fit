@@ -51,6 +51,36 @@ function planText(plan: ReturnType<typeof generateWorkoutPlan>) {
   return plan?.days.map((day) => `${day.title} ${day.focus} ${day.exercises.map((exercise) => exercise.name).join(" ")} ${day.coreFinisher?.title ?? ""}`).join(" ").toLowerCase() ?? "";
 }
 
+function hasAlternatingCoreObliqueFinishers(plan: ReturnType<typeof generateWorkoutPlan>) {
+  if (!plan?.days.length) {
+    return false;
+  }
+
+  return plan.days.every((day, index) => {
+    const expected = index % 2 === 0 ? "front-core-trunk-stability" : "obliques-side-core";
+    return day.coreFinisher?.emphasis === expected;
+  });
+}
+
+function hasNoMixedCoreAndObliqueFinisher(plan: ReturnType<typeof generateWorkoutPlan>) {
+  const frontCorePattern = /dead bug|hollow|bird dog|crunch|leg raise|knee raise|glute bridge|plank$/i;
+  const obliquePattern = /side plank|russian twist|woodchop|oblique|landmine twist/i;
+
+  return Boolean(plan?.days.every((day) => {
+    const exerciseNames = day.coreFinisher?.exercises.map((exercise) => exercise.name).join(" ") ?? "";
+
+    if (day.coreFinisher?.emphasis === "front-core-trunk-stability") {
+      return !obliquePattern.test(exerciseNames);
+    }
+
+    if (day.coreFinisher?.emphasis === "obliques-side-core") {
+      return !frontCorePattern.test(exerciseNames);
+    }
+
+    return true;
+  }));
+}
+
 export function validateTrainingFocusSystems() {
   const focusShapeWorks = TRAINING_FOCUSES.length === 4 && TRAINING_FOCUSES.every((focus) =>
     focus.id &&
@@ -106,7 +136,6 @@ export function validateTrainingFocusSystems() {
   const beastSculptText = planText(beastSculptPlan);
   const maintenanceGlutesText = planText(maintenanceGlutesPlan);
   const athleteConditioningText = planText(athleteConditioningPlan);
-  const beastCoreTitles = beastSculptPlan?.days.map((day) => day.coreFinisher?.title).filter(Boolean) ?? [];
   const foundationSculptExerciseCount = foundationSculptPlan?.days.reduce((sum, day) => sum + day.exercises.length + (day.coreFinisher?.exercises.length ?? 0), 0) ?? 0;
   const beastSculptExerciseCount = beastSculptPlan?.days.reduce((sum, day) => sum + day.exercises.length + (day.coreFinisher?.exercises.length ?? 0), 0) ?? 0;
   const sculptShortTime = beastSculptPlan
@@ -151,7 +180,8 @@ export function validateTrainingFocusSystems() {
     beastSculptIncludesFocusEmphasis: /glute|hip thrust|bridge/.test(beastSculptText) && /shoulder|posture|reverse fly/.test(beastSculptText) && /core|abs|plank|dead bug/.test(beastSculptText),
     maintenanceGlutesIncludesGluteCoreEmphasis: /glute|hip thrust|bridge/.test(maintenanceGlutesText) && /core|plank|dead bug|oblique/.test(maintenanceGlutesText),
     athleteConditioningIncludesConditioningEmphasis: /conditioning|circuit|stamina|interval|walk/.test(athleteConditioningText),
-    dailyCoreRotationDoesNotRepeatExactPattern: new Set(beastCoreTitles).size === beastCoreTitles.length,
+    coreAndObliquesAlternateByWorkoutDay: hasAlternatingCoreObliqueFinishers(beastSculptPlan) && hasAlternatingCoreObliqueFinishers(beastMassPlan),
+    coreFinishersNeverMixCoreAndObliques: hasNoMixedCoreAndObliqueFinisher(beastSculptPlan) && hasNoMixedCoreAndObliqueFinisher(beastMassPlan),
     foundationSculptIsLowerVolumeThanBeastSculpt: foundationSculptExerciseCount < beastSculptExerciseCount,
     massPowerPreservesExistingBehavior: Boolean(beastMassPlan?.title.includes("Golden-Era") && beastMassPlan.days[0]?.title.includes("Chest + Back")),
     sculptShortTimePreservesFocusWork: Boolean(sculptShortTime?.adjustedWorkout.exercises.some((exercise) => /glute|hip thrust|bridge|shoulder|posture|row/i.test(exercise.name))),

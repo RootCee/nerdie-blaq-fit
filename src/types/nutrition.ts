@@ -63,6 +63,19 @@ export interface FoodLogEntryInput {
   servingNotes: string;
 }
 
+export interface SavedMealEntry {
+  id: string;
+  mealType: FoodMealType;
+  foodName: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  servingNotes: string;
+  savedAt: string;
+  sourceLogId?: string | null;
+}
+
 export interface FoodLogRow {
   id: string;
   user_id: string;

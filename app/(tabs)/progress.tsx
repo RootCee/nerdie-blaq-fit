@@ -82,6 +82,22 @@ function getStartOfWeek(date: Date) {
   return copy;
 }
 
+function getEndOfWeek(date: Date) {
+  const start = getStartOfWeek(date);
+  const end = new Date(start);
+
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return end;
+}
+
+function isCompletedThisWeek(item: WorkoutHistoryItem, now = new Date()) {
+  const completedAt = new Date(item.completedAt);
+
+  return completedAt >= getStartOfWeek(now) && completedAt <= getEndOfWeek(now);
+}
+
 function parseLoggedNumber(value: string) {
   const numeric = Number.parseFloat(value.replace(/[^0-9.]/g, ""));
   return Number.isFinite(numeric) ? numeric : 0;
@@ -297,6 +313,7 @@ export default function ProgressScreen() {
     bodyWeightSummary.trendDirection,
     bodyWeightSummary.distanceFromGoal,
   );
+  const currentWeekHistory = history.filter((item) => isCompletedThisWeek(item));
   const todayChallengeLog = challengeLogs.find((log) => log.logDate === getTodayDateKey()) ?? null;
   const hasLoggedChallengeToday = Boolean(todayChallengeLog);
   const shouldShowSharePrompt = Boolean(challenge || challengeSummary);
@@ -695,15 +712,15 @@ export default function ProgressScreen() {
         )}
       </SectionCard>
 
-      {!history.length ? (
-        <SectionCard title="No saved sessions yet" eyebrow="Start building history">
+      {!currentWeekHistory.length ? (
+        <SectionCard title="No workouts finished this week" eyebrow="Current week">
           <Text style={styles.copy}>
-            Once you save your first workout session, this space starts telling the story of your progress.
+            Finished workouts from this week will show here. When the week rolls over, this list resets for the new week.
           </Text>
         </SectionCard>
       ) : null}
 
-      {history.map((item) => (
+      {currentWeekHistory.map((item) => (
         <Pressable
           key={item.dayId}
           onPress={() =>

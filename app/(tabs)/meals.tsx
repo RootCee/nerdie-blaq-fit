@@ -11,14 +11,14 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { generateMealPlan } from "@/features/nutrition/generate-meal-plan";
 import { generateNutritionGuidance } from "@/features/nutrition/generate-nutrition-guidance";
-import { calculateFoodLogDailyTotals, loadFoodLogsForDate, loadRecentFoodLogs, saveFoodLog } from "@/features/nutrition/food-log-persistence";
+import { calculateFoodLogDailyTotals, loadFoodLogsForDate, loadRecentFoodLogs, loadSavedMeals, saveFoodLog, saveMealForLater, saveMealFromFoodLog } from "@/features/nutrition/food-log-persistence";
 import { loadRecentSupplementLogs, loadSupplementLogsForDate, saveSupplementLog } from "@/features/nutrition/supplement-log-persistence";
 import { estimateFoodNutritionWithGemini } from "@/lib/ai/geminiFoodEstimator";
 import { getActiveCaloriesForDate } from "@/lib/health";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useSubscription } from "@/store/subscription-store";
 import { GroceryList } from "@/types/meal-plan";
-import { FoodLogEntry, FoodMealType, FoodNutritionEstimate, SupplementLogEntry, SupplementTiming } from "@/types/nutrition";
+import { FoodLogEntry, FoodMealType, FoodNutritionEstimate, SavedMealEntry, SupplementLogEntry, SupplementTiming } from "@/types/nutrition";
 import { colors, spacing } from "@/theme";
 
 const GROCERY_CATEGORIES: Array<{ key: keyof GroceryList; label: string }> = [
@@ -72,6 +72,31 @@ function parseNumberInput(value: string) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function isWithinLastHours(dateString: string, hours: number) {
+  const timestamp = new Date(dateString).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  return Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function getFoodInputFromForm(logDate: string, mealType: FoodMealType, foodName: string, calories: string, proteinG: string, carbsG: string, fatG: string, servingAmount: string, servingNotes: string) {
+  return {
+    logDate,
+    mealType,
+    foodName,
+    calories: parseNumberInput(calories),
+    proteinG: parseNumberInput(proteinG),
+    carbsG: parseNumberInput(carbsG),
+    fatG: parseNumberInput(fatG),
+    servingNotes: servingNotes.trim()
+      ? `${servingAmount.trim()} - ${servingNotes.trim()}`
+      : servingAmount.trim(),
+  };
+}
+
 export default function MealsScreen() {
   const { profile, isComplete } = useOnboardingStore();
   const { isPro } = useSubscription();
@@ -87,9 +112,11 @@ export default function MealsScreen() {
   const [servingNotes, setServingNotes] = useState("");
   const [foodLogs, setFoodLogs] = useState<FoodLogEntry[]>([]);
   const [recentFoodLogs, setRecentFoodLogs] = useState<FoodLogEntry[]>([]);
+  const [savedMeals, setSavedMeals] = useState<SavedMealEntry[]>([]);
   const [activeCalories, setActiveCalories] = useState(0);
   const [isFoodLogLoading, setIsFoodLogLoading] = useState(true);
   const [isFoodLogSaving, setIsFoodLogSaving] = useState(false);
+  const [isSavedMealSaving, setIsSavedMealSaving] = useState(false);
   const [isEstimatingFood, setIsEstimatingFood] = useState(false);
   const [nutritionEstimate, setNutritionEstimate] = useState<FoodNutritionEstimate | null>(null);
   const [supplementLogs, setSupplementLogs] = useState<SupplementLogEntry[]>([]);
@@ -106,16 +133,37 @@ export default function MealsScreen() {
   const [foodLogError, setFoodLogError] = useState<string | null>(null);
   const [supplementLogError, setSupplementLogError] = useState<string | null>(null);
   const foodTotals = calculateFoodLogDailyTotals(foodLogs);
-  const netCalories = foodTotals.calories - activeCalories;
+  const supplementTotals = calculateFoodLogDailyTotals(supplementLogs.map((entry) => ({
+    id: entry.id,
+    logDate: entry.logDate,
+    mealType: "snack",
+    foodName: entry.supplementName,
+    calories: entry.calories,
+    proteinG: entry.proteinG,
+    carbsG: entry.carbsG,
+    fatG: entry.fatG,
+    servingNotes: entry.notes,
+    createdAt: entry.createdAt,
+    storageMode: entry.storageMode,
+  })));
+  const combinedTotals = {
+    calories: foodTotals.calories + supplementTotals.calories,
+    proteinG: foodTotals.proteinG + supplementTotals.proteinG,
+    carbsG: foodTotals.carbsG + supplementTotals.carbsG,
+    fatG: foodTotals.fatG + supplementTotals.fatG,
+  };
+  const netCalories = combinedTotals.calories - activeCalories;
 
   const refreshFoodLogs = async () => {
-    const [entries, recentEntries] = await Promise.all([
+    const [entries, recentEntries, savedMealEntries] = await Promise.all([
       loadFoodLogsForDate(selectedDate),
       loadRecentFoodLogs(10),
+      loadSavedMeals(),
     ]);
 
     setFoodLogs(entries);
-    setRecentFoodLogs(recentEntries.filter((entry) => entry.logDate !== selectedDate).slice(0, 6));
+    setRecentFoodLogs(recentEntries.filter((entry) => entry.logDate !== selectedDate && isWithinLastHours(entry.createdAt, 24)).slice(0, 6));
+    setSavedMeals(savedMealEntries);
   };
 
   const refreshSupplementLogs = async () => {
@@ -135,15 +183,17 @@ export default function MealsScreen() {
       setIsFoodLogLoading(true);
 
       try {
-        const [entries, recentEntries, healthCalories] = await Promise.all([
+        const [entries, recentEntries, savedMealEntries, healthCalories] = await Promise.all([
           loadFoodLogsForDate(selectedDate),
           loadRecentFoodLogs(10),
+          loadSavedMeals(),
           getActiveCaloriesForDate(selectedDate),
         ]);
 
         if (isMounted) {
           setFoodLogs(entries);
-          setRecentFoodLogs(recentEntries.filter((entry) => entry.logDate !== selectedDate).slice(0, 6));
+          setRecentFoodLogs(recentEntries.filter((entry) => entry.logDate !== selectedDate && isWithinLastHours(entry.createdAt, 24)).slice(0, 6));
+          setSavedMeals(savedMealEntries);
           setActiveCalories(healthCalories);
           setFoodLogError(null);
         }
@@ -200,16 +250,7 @@ export default function MealsScreen() {
 
     try {
       await saveFoodLog({
-        logDate: selectedDate,
-        mealType,
-        foodName,
-        calories: parseNumberInput(calories),
-        proteinG: parseNumberInput(proteinG),
-        carbsG: parseNumberInput(carbsG),
-        fatG: parseNumberInput(fatG),
-        servingNotes: servingNotes.trim()
-          ? `${servingAmount.trim()} - ${servingNotes.trim()}`
-          : servingAmount.trim(),
+        ...getFoodInputFromForm(selectedDate, mealType, foodName, calories, proteinG, carbsG, fatG, servingAmount, servingNotes),
       });
       setFoodName("");
       setServingAmount("");
@@ -224,6 +265,20 @@ export default function MealsScreen() {
       setFoodLogError(saveError instanceof Error ? saveError.message : "Unable to save this food log.");
     } finally {
       setIsFoodLogSaving(false);
+    }
+  };
+
+  const handleSaveCurrentMealForLater = async () => {
+    setIsSavedMealSaving(true);
+    setFoodLogError(null);
+
+    try {
+      await saveMealForLater(getFoodInputFromForm(selectedDate, mealType, foodName, calories, proteinG, carbsG, fatG, servingAmount, servingNotes));
+      setSavedMeals(await loadSavedMeals());
+    } catch (saveError) {
+      setFoodLogError(saveError instanceof Error ? saveError.message : "Unable to save this meal for later.");
+    } finally {
+      setIsSavedMealSaving(false);
     }
   };
 
@@ -303,6 +358,21 @@ export default function MealsScreen() {
     setFoodLogError(null);
   };
 
+  const fillFoodFromSavedMeal = (entry: SavedMealEntry) => {
+    const [amount, ...noteParts] = entry.servingNotes.split(" - ");
+
+    setMealType(entry.mealType);
+    setFoodName(entry.foodName);
+    setServingAmount(amount?.trim() || entry.servingNotes);
+    setCalories(String(entry.calories));
+    setProteinG(String(entry.proteinG));
+    setCarbsG(String(entry.carbsG));
+    setFatG(String(entry.fatG));
+    setServingNotes(noteParts.join(" - ").trim());
+    setNutritionEstimate(null);
+    setFoodLogError(null);
+  };
+
   const repeatFoodLog = async (entry: FoodLogEntry) => {
     setIsFoodLogSaving(true);
     setFoodLogError(null);
@@ -323,6 +393,43 @@ export default function MealsScreen() {
       setFoodLogError(saveError instanceof Error ? saveError.message : "Unable to repeat this food log.");
     } finally {
       setIsFoodLogSaving(false);
+    }
+  };
+
+  const repeatSavedMeal = async (entry: SavedMealEntry) => {
+    setIsFoodLogSaving(true);
+    setFoodLogError(null);
+
+    try {
+      await saveFoodLog({
+        logDate: selectedDate,
+        mealType: entry.mealType,
+        foodName: entry.foodName,
+        calories: entry.calories,
+        proteinG: entry.proteinG,
+        carbsG: entry.carbsG,
+        fatG: entry.fatG,
+        servingNotes: entry.servingNotes,
+      });
+      await refreshFoodLogs();
+    } catch (saveError) {
+      setFoodLogError(saveError instanceof Error ? saveError.message : "Unable to add this saved meal.");
+    } finally {
+      setIsFoodLogSaving(false);
+    }
+  };
+
+  const saveRecentFoodForLater = async (entry: FoodLogEntry) => {
+    setIsSavedMealSaving(true);
+    setFoodLogError(null);
+
+    try {
+      await saveMealFromFoodLog(entry);
+      setSavedMeals(await loadSavedMeals());
+    } catch (saveError) {
+      setFoodLogError(saveError instanceof Error ? saveError.message : "Unable to save this meal for later.");
+    } finally {
+      setIsSavedMealSaving(false);
     }
   };
 
@@ -386,15 +493,17 @@ export default function MealsScreen() {
         ) : null}
         <Text style={styles.sectionLabel}>Logged today</Text>
         <View style={styles.statsRow}>
-          <StatChip label="Consumed" value={`${Math.round(foodTotals.calories)} cal`} />
-          <StatChip label="Protein" value={`${Math.round(foodTotals.proteinG)}g`} />
-          <StatChip label="Carbs" value={`${Math.round(foodTotals.carbsG)}g`} />
-          <StatChip label="Fat" value={`${Math.round(foodTotals.fatG)}g`} />
+          <StatChip label="Total calories" value={`${Math.round(combinedTotals.calories)} cal`} />
+          <StatChip label="Food" value={`${Math.round(foodTotals.calories)} cal`} />
+          <StatChip label="Add-ons" value={`${Math.round(supplementTotals.calories)} cal`} />
+          <StatChip label="Protein" value={`${Math.round(combinedTotals.proteinG)}g`} />
+          <StatChip label="Carbs" value={`${Math.round(combinedTotals.carbsG)}g`} />
+          <StatChip label="Fat" value={`${Math.round(combinedTotals.fatG)}g`} />
           <StatChip label="Active" value={`${activeCalories} cal`} />
           <StatChip label="Net" value={`${Math.round(netCalories)} cal`} />
         </View>
         <Text style={styles.helperText}>
-          Net calories subtract Apple Health active calories when available. Food calories are user-entered.
+          Total calories include food plus supplement/add-on calories. Net subtracts Apple Health active calories when available.
         </Text>
         {guidance ? (
           <>
@@ -453,11 +562,51 @@ export default function MealsScreen() {
           onPress={() => void handleSaveFoodLog()}
           disabled={isFoodLogSaving}
         />
+        <PrimaryButton
+          label={isSavedMealSaving ? "Saving meal..." : "Save Meal for Later"}
+          onPress={() => void handleSaveCurrentMealForLater()}
+          disabled={isSavedMealSaving || isFoodLogSaving}
+          variant="ghost"
+        />
         {foodLogError ? <Text style={styles.errorText}>{foodLogError}</Text> : null}
       </SectionCard>
 
+      {savedMeals.length ? (
+        <SectionCard title="Saved meals" eyebrow="Add anytime">
+          {savedMeals.map((entry) => (
+            <View key={`saved-${entry.id}`} style={styles.repeatCard}>
+              <View style={styles.prepHeader}>
+                <Text style={styles.prepSlot}>{SLOT_LABELS[entry.mealType]}</Text>
+                <Text style={styles.prepCalories}>{entry.calories} cal</Text>
+              </View>
+              <Text style={styles.prepTitle}>{entry.foodName}</Text>
+              <Text style={styles.prepDesc}>
+                {Math.round(entry.proteinG)}g protein • {Math.round(entry.carbsG)}g carbs • {Math.round(entry.fatG)}g fat
+              </Text>
+              {entry.servingNotes ? <Text style={styles.portionHint}>{entry.servingNotes}</Text> : null}
+              <Text style={styles.helperText}>Saved {new Date(entry.savedAt).toLocaleDateString()}</Text>
+              <View style={styles.repeatButtonRow}>
+                <PrimaryButton
+                  label="Use Numbers"
+                  onPress={() => fillFoodFromSavedMeal(entry)}
+                  disabled={isFoodLogSaving}
+                  variant="ghost"
+                  style={styles.repeatButton}
+                />
+                <PrimaryButton
+                  label="Add Today"
+                  onPress={() => void repeatSavedMeal(entry)}
+                  disabled={isFoodLogSaving}
+                  style={styles.repeatButton}
+                />
+              </View>
+            </View>
+          ))}
+        </SectionCard>
+      ) : null}
+
       {recentFoodLogs.length ? (
-        <SectionCard title="Repeat meal" eyebrow="Recent entries">
+        <SectionCard title="Recent meals" eyebrow="Last 24 hours">
           {recentFoodLogs.map((entry) => (
             <View key={`recent-${entry.id}`} style={styles.repeatCard}>
               <View style={styles.prepHeader}>
@@ -481,6 +630,13 @@ export default function MealsScreen() {
                   label="Add Today"
                   onPress={() => void repeatFoodLog(entry)}
                   disabled={isFoodLogSaving}
+                  style={styles.repeatButton}
+                />
+                <PrimaryButton
+                  label="Save"
+                  onPress={() => void saveRecentFoodForLater(entry)}
+                  disabled={isSavedMealSaving}
+                  variant="ghost"
                   style={styles.repeatButton}
                 />
               </View>
