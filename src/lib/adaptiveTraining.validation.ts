@@ -15,6 +15,7 @@ const profile: OnboardingProfile = {
   fitnessGoal: "muscle-gain",
   workoutExperience: "advanced",
   trainingPathId: "beast",
+  trainingFocusId: "mass-power",
   workoutLocation: "gym",
   availableEquipment: ["barbell", "dumbbells", "bench"],
   dietaryPreference: "high-protein",

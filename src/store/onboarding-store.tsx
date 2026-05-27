@@ -21,7 +21,7 @@ interface OnboardingStoreValue extends OnboardingState {
 
 const OnboardingStoreContext = createContext<OnboardingStoreValue | null>(null);
 
-const optionalProfileColumns = ["goal_weight", "goal_pace", "training_path_id"];
+const optionalProfileColumns = ["goal_weight", "goal_pace", "training_path_id", "training_focus_id"];
 
 function isMissingOptionalProfileColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? "";

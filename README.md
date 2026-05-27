@@ -87,6 +87,7 @@ create table if not exists public.profiles (
   fitness_goal text,
   workout_experience text,
   training_path_id text check (training_path_id in ('foundation', 'athlete', 'maintenance', 'beast')),
+  training_focus_id text check (training_focus_id in ('mass-power', 'sculpt-strength', 'athletic-conditioning', 'glutes-core')),
   workout_location text,
   available_equipment text[] not null default '{}',
   dietary_preference text,

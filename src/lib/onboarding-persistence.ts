@@ -13,6 +13,7 @@ export const emptyOnboardingProfile: OnboardingProfile = {
   fitnessGoal: null,
   workoutExperience: null,
   trainingPathId: null,
+  trainingFocusId: null,
   workoutLocation: null,
   availableEquipment: [],
   dietaryPreference: null,
@@ -36,6 +37,7 @@ export function mapProfileToSupabaseRow(
     fitness_goal: profile.fitnessGoal,
     workout_experience: profile.workoutExperience,
     training_path_id: profile.trainingPathId,
+    training_focus_id: profile.trainingFocusId,
     workout_location: profile.workoutLocation,
     available_equipment: profile.availableEquipment,
     dietary_preference: profile.dietaryPreference,
@@ -49,6 +51,7 @@ export function mapProfileToLegacySupabaseRow(payload: ProfileUpsertPayload) {
     goal_weight: _goalWeight,
     goal_pace: _goalPace,
     training_path_id: _trainingPathId,
+    training_focus_id: _trainingFocusId,
     ...legacyPayload
   } = payload;
 
@@ -67,6 +70,7 @@ export function mapSupabaseRowToProfile(row: SupabaseProfileRow): OnboardingProf
     fitnessGoal: row.fitness_goal,
     workoutExperience: row.workout_experience,
     trainingPathId: row.training_path_id ?? null,
+    trainingFocusId: row.training_focus_id ?? null,
     workoutLocation: row.workout_location,
     availableEquipment: row.available_equipment ?? [],
     dietaryPreference: row.dietary_preference,

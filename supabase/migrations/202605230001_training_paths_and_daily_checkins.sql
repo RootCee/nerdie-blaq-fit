@@ -3,7 +3,9 @@ add column if not exists goal_weight text,
 add column if not exists goal_pace text
 check (goal_pace in ('easy', 'steady', 'aggressive')),
 add column if not exists training_path_id text
-check (training_path_id in ('foundation', 'athlete', 'maintenance', 'beast'));
+check (training_path_id in ('foundation', 'athlete', 'maintenance', 'beast')),
+add column if not exists training_focus_id text
+check (training_focus_id in ('mass-power', 'sculpt-strength', 'athletic-conditioning', 'glutes-core'));
 
 create table if not exists public.user_daily_checkins (
   id uuid primary key default gen_random_uuid(),

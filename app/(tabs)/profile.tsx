@@ -6,9 +6,10 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { OptionChips } from "@/components/ui/OptionChips";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { TRAINING_FOCUSES, getTrainingFocusById, getTrainingFocusGuidance } from "@/config/trainingFocus";
 import { TRAINING_PATHS, getTrainingPathById, getTrainingPathGuidance } from "@/config/trainingPaths";
 import { deleteCurrentAccount } from "@/lib/account-deletion";
-import { mapProfileToSupabaseRow } from "@/lib/onboarding-persistence";
+import { mapProfileToLegacySupabaseRow, mapProfileToSupabaseRow } from "@/lib/onboarding-persistence";
 import {
   getSessionStatus,
   linkAppleAccount,
@@ -23,6 +24,12 @@ import { colors, spacing } from "@/theme";
 function formatProvider(provider: string | null): string {
   if (!provider) return "Signed in";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function isMissingOptionalProfileColumnError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+
+  return ["goal_weight", "goal_pace", "training_path_id", "training_focus_id"].some((column) => message.includes(column));
 }
 
 export default function ProfileScreen() {
@@ -73,14 +80,22 @@ export default function ProfileScreen() {
 
       const status = await getSessionStatus();
       if (supabase && status.userId && !status.isAnonymous) {
+        const payload = mapProfileToSupabaseRow(status.userId, profile, isComplete);
         const { error: profileSaveError } = await supabase
           .from("profiles")
-          .upsert(
-            mapProfileToSupabaseRow(status.userId, profile, isComplete) as Record<string, unknown>,
-            { onConflict: "id" },
-          );
+          .upsert(payload as Record<string, unknown>, { onConflict: "id" });
 
-        if (profileSaveError) {
+        if (isMissingOptionalProfileColumnError(profileSaveError)) {
+          const { error: legacyProfileSaveError } = await supabase
+            .from("profiles")
+            .upsert(mapProfileToLegacySupabaseRow(payload) as Record<string, unknown>, { onConflict: "id" });
+
+          if (legacyProfileSaveError) {
+            throw legacyProfileSaveError;
+          }
+        }
+
+        if (profileSaveError && !isMissingOptionalProfileColumnError(profileSaveError)) {
           throw profileSaveError;
         }
       }
@@ -142,6 +157,7 @@ export default function ProfileScreen() {
           <Text style={styles.item}>Weight: {profile.weight || "Not set"}</Text>
           <Text style={styles.item}>Goal: {profile.fitnessGoal ?? "Not set"}</Text>
           <Text style={styles.item}>Training path: {getTrainingPathById(profile.trainingPathId).title}</Text>
+          <Text style={styles.item}>Training focus: {getTrainingFocusById(profile.trainingFocusId).title}</Text>
           <Text style={styles.item}>
             Equipment: {profile.availableEquipment.join(", ") || "Not set"}
           </Text>
@@ -164,6 +180,24 @@ export default function ProfileScreen() {
         <Text style={styles.item}>{getTrainingPathGuidance(profile)}</Text>
         <PrimaryButton
           label={isSaving ? "Saving path..." : "Save Training Path"}
+          onPress={() => void saveProfile(profile)}
+          disabled={isSaving}
+          variant="ghost"
+        />
+      </SectionCard>
+
+      <SectionCard title="Training focus" eyebrow="Body + performance">
+        <Text style={styles.copy}>
+          Choose the training focus that matches the body and performance you’re building.
+        </Text>
+        <OptionChips
+          options={TRAINING_FOCUSES.map((focus) => ({ label: focus.title, value: focus.id }))}
+          value={profile.trainingFocusId}
+          onChange={(value) => updateProfile({ trainingFocusId: value })}
+        />
+        <Text style={styles.item}>{getTrainingFocusGuidance(profile)}</Text>
+        <PrimaryButton
+          label={isSaving ? "Saving focus..." : "Save Training Focus"}
           onPress={() => void saveProfile(profile)}
           disabled={isSaving}
           variant="ghost"

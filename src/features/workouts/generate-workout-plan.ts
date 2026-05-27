@@ -1,4 +1,5 @@
 import { getTrainingPathById, TrainingPathConfig, TrainingPathId } from "@/config/trainingPaths";
+import { getTrainingFocusById, TrainingFocusConfig, TrainingFocusId } from "@/config/trainingFocus";
 import { EquipmentOption, FitnessGoal, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
 import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
 import { getWorkoutDayForWeekday, PROGRAM_WEEKDAY_LABELS } from "@/features/workouts/workout-schedule";
@@ -35,6 +36,8 @@ type ExerciseLibrary = {
   legs: string[];
   frontAbs: string[];
   obliques: string[];
+  glutes: string[];
+  posture: string[];
 };
 
 export type WorkoutPlanStructureIssue = {
@@ -241,6 +244,22 @@ function buildExerciseLibrary(location: WorkoutLocation, equipment: EquipmentOpt
       "Side plank hip dip",
       "Hanging oblique raise",
     ],
+    glutes: [
+      hasBarbell && isGym ? "Barbell hip thrust" : "",
+      hasDumbbells ? "Dumbbell hip thrust" : "",
+      hasBands ? "Banded glute bridge" : "",
+      "Glute bridge",
+      "Reverse lunge",
+      "Split squat",
+      hasKettlebells ? "Kettlebell Romanian deadlift" : "",
+    ].filter(Boolean),
+    posture: [
+      hasBands ? "Resistance band face pull" : "",
+      "Prone Y-T-W raises",
+      "Reverse fly",
+      hasDumbbells ? "Single-arm dumbbell row" : "",
+      "Bird dog",
+    ].filter(Boolean),
   };
 }
 
@@ -403,6 +422,67 @@ function createAdvancedAbsBlock(index: number): CoreFinisherBlock {
       exercise(obliques, "3-5 rounds", "20 total reps or 10 each side", "20-30 sec", "Stay smooth side to side and own the oblique contraction."),
       exercise(stability, "3-5 rounds", "45-60 sec", "30-45 sec", "Brace hard and build time under tension without losing shape."),
     ],
+  };
+}
+
+function createFocusCoreRotation(index: number, focus: TrainingFocusConfig): CoreFinisherBlock {
+  const rotation = [
+    {
+      title: "Lower abs control",
+      emphasis: "front-core-trunk-stability" as const,
+      exercises: [
+        ["Dead bug", "2-3", "8-12 each side", "20 sec", "Control the pelvis and keep the low back quiet."],
+        ["Laying leg raise", "2-3", "8-12", "30 sec", "Use a range you can own without swinging."],
+      ],
+    },
+    {
+      title: "Anti-rotation stability",
+      emphasis: "obliques-side-core" as const,
+      exercises: [
+        ["Bird dog", "2-3", "8-10 each side", "20 sec", "Reach long and resist hip rotation."],
+        ["Side plank", "2-3", "20-35 sec each side", "30 sec", "Stay stacked and breathe behind the brace."],
+      ],
+    },
+    {
+      title: "Glute/core brace",
+      emphasis: "front-core-trunk-stability" as const,
+      exercises: [
+        ["Glute bridge", "2-3", "10-15", "20 sec", "Squeeze without overextending the low back."],
+        ["Plank", "2-3", "25-40 sec", "30 sec", "Brace like you are protecting the lift."],
+      ],
+    },
+    {
+      title: "Upper abs control",
+      emphasis: "front-core-trunk-stability" as const,
+      exercises: [
+        ["Crunch", "2-3", "10-15", "20 sec", "Curl under control and keep the neck relaxed."],
+        ["Hollow hold", "2-3", "15-30 sec", "30 sec", "Scale the lever before your low back takes over."],
+      ],
+    },
+    {
+      title: "Oblique control",
+      emphasis: "obliques-side-core" as const,
+      exercises: [
+        ["Side plank hip dip", "2-3", "8-12 each side", "20 sec", "Move slowly through the side body."],
+        ["Russian twist", "2-3", "12-20 total", "30 sec", "Rotate with control instead of speed."],
+      ],
+    },
+    {
+      title: "Core mobility finisher",
+      emphasis: "front-core-trunk-stability" as const,
+      exercises: [
+        ["Dead bug", "2", "8-10 each side", "20 sec", "Keep this crisp and restorative."],
+        ["Bird dog", "2", "8-10 each side", "20 sec", "Finish with smooth spine and hip control."],
+      ],
+    },
+  ];
+  const selected = rotation[index % rotation.length];
+
+  return {
+    title: selected.title,
+    emphasis: selected.emphasis,
+    notes: `${focus.title} rotates core emphasis daily so the trunk gets stronger without repeating the same pattern every session.`,
+    exercises: selected.exercises.map(([name, sets, reps, rest, notes]) => exercise(name, sets, reps, rest, notes)),
   };
 }
 
@@ -738,6 +818,141 @@ function buildSplitDays(
   return [upperOne, lowerOne, upperTwo, lowerTwo, conditioning, bodybuildingBridge].slice(0, trainingDays);
 }
 
+function buildFocusBiasDays(
+  trainingDays: number,
+  library: ExerciseLibrary,
+  goal: SupportedWorkoutGoal,
+  experience: WorkoutExperience,
+  focus: TrainingFocusConfig,
+  isHighIntensityPath: boolean,
+): WorkoutDay[] {
+  if (focus.id === "mass-power") {
+    return trainingDays <= 3
+      ? buildFullBodyDays(trainingDays, library, goal, experience)
+      : buildSplitDays(trainingDays, library, goal, experience);
+  }
+
+  if (focus.id === "athletic-conditioning") {
+    const prescription = getPrescription(goal, experience);
+    const circuitSets = isHighIntensityPath ? "4" : experience === "beginner" ? "2-3" : "3";
+
+    return Array.from({ length: trainingDays }, (_, index) => {
+      const coreFinisher = createFocusCoreRotation(index, focus);
+      const exercises = [
+        exercise(pick(index % 2 === 0 ? library.squat : library.hinge, index), prescription.sets, prescription.reps, prescription.rest, "Strength first. Keep reps powerful and clean."),
+        exercise(pick(index % 2 === 0 ? library.push : library.pull, index), prescription.sets, prescription.reps, prescription.rest, "Own the main strength pattern before the circuit."),
+        exercise(pick(library.conditioning, index), circuitSets, "45 sec or 8-12 min", "45-60 sec", "Circuit work should raise output without turning form sloppy."),
+        exercise(pick(library.core, index), "2-3", "20-40 sec", "30 sec", "Brace and breathe while fatigue builds."),
+      ];
+
+      return buildDay(
+        `day-${index + 1}`,
+        `Day ${index + 1}: Athletic Strength + Conditioning`,
+        "Strength, stamina, and repeatable movement",
+        "Blend strength with conditioning. Push pace, but keep enough control to recover tomorrow.",
+        exercises,
+        {
+          coreFinisher,
+          supersets: [
+            createSupersetGroup(`day-${index + 1}-conditioning-flow`, "Conditioning flow", [exercises[2], exercises[3]], "45-60 sec after both moves", "Pair stamina work with trunk control."),
+          ],
+        },
+      );
+    });
+  }
+
+  const isGluteOnlyFocus = focus.id === "glutes-core";
+  const strengthSets = isHighIntensityPath ? "4-5" : experience === "beginner" ? "2-3" : "3-4";
+  const accessorySets = isHighIntensityPath ? "3-4" : experience === "beginner" ? "2" : "2-3";
+  const rest = isHighIntensityPath ? "60-90 sec" : "45-75 sec";
+  const templates = [
+    {
+      title: "Glutes + Hamstrings",
+      focusText: "Glute strength, hinge control, and lower abs",
+      exercises: [
+        exercise(pick(library.glutes, 0), strengthSets, "8-12", rest, "Make this the glute-focused anchor lift. Keep the ribs down and finish with control."),
+        exercise(pick(library.hinge, 0), strengthSets, "8-10", rest, "Load hamstrings without losing brace."),
+        exercise(pick(library.squat, 1), accessorySets, "10-12 each side", "60 sec", "Single-leg work stays smooth and knee-friendly."),
+        exercise(pick(library.posture, 0), accessorySets, "12-15", "45 sec", "Posture support keeps the upper body balanced."),
+      ],
+    },
+    {
+      title: "Shoulders + Posture",
+      focusText: "Shoulders, upper-back posture, and anti-rotation",
+      exercises: [
+        exercise(pick(library.shoulders, 1), strengthSets, "8-12", rest, "Press or raise with control and no low-back takeover."),
+        exercise(pick(library.posture, 1), strengthSets, "10-15", "60 sec", "Own the shoulder blades and train posture deliberately."),
+        exercise(pick(library.shoulders, 3), accessorySets, "12-16", "45 sec", "Strict shoulder work. Stop before swinging."),
+        exercise(pick(library.glutes, 2), accessorySets, "12-15", "45 sec", "Light glute accessory to keep the priority alive."),
+      ],
+    },
+    {
+      title: "Quads + Glutes",
+      focusText: "Leg strength, glute drive, and bracing",
+      exercises: [
+        exercise(pick(library.squat, 0), strengthSets, "8-12", rest, "Use a strong brace and controlled depth."),
+        exercise(pick(library.glutes, 3), strengthSets, "10-15", "60 sec", "Drive through the glutes without rushing."),
+        exercise(pick(library.legs, 4), accessorySets, "12-15", "45-60 sec", "Quad accessory stays controlled."),
+        exercise(pick(library.posture, 2), accessorySets, "12-15", "45 sec", "Keep posture work in the week."),
+      ],
+    },
+    {
+      title: "Upper Sculpt + Core",
+      focusText: "Shoulders, back, arms, and upper-ab control",
+      exercises: [
+        exercise(pick(library.pull, 1), strengthSets, "8-12", rest, "Back strength supports posture and shoulder shape."),
+        exercise(pick(library.shoulders, 2), accessorySets, "12-15", "45-60 sec", "Clean side-delt work without momentum."),
+        exercise(pick(library.arms, 1), accessorySets, "10-14", "45 sec", "Arm work stays strict and joint-friendly."),
+        exercise(pick(library.conditioning, 1), isHighIntensityPath ? "3" : "2", "6-10 min", "As needed", "Conditioning supports definition without burying recovery."),
+      ],
+    },
+    {
+      title: isGluteOnlyFocus ? "Glute Density + Obliques" : "Glutes + Conditioning",
+      focusText: "Glute volume, oblique control, and conditioning",
+      exercises: [
+        exercise(pick(library.glutes, 4), strengthSets, "10-12 each side", rest, "Train both sides evenly and keep the hips square."),
+        exercise(pick(library.glutes, 5), accessorySets, "12-15", "45-60 sec", "Chase controlled glute tension, not speed."),
+        exercise(pick(library.conditioning, 2), isHighIntensityPath ? "3" : "2", "6-10 min", "As needed", "Keep this sustainable and athletic."),
+        exercise(pick(library.posture, 3), accessorySets, "12-15", "45 sec", "Posture work keeps the week balanced."),
+      ],
+    },
+    {
+      title: "Recovery-Aware Full Body",
+      focusText: "Glutes, core mobility, shoulders, and movement quality",
+      exercises: [
+        exercise(pick(library.glutes, 1), accessorySets, "10-15", "45-60 sec", "Pump work only. Leave recovery in the tank."),
+        exercise(pick(library.shoulders, 5), accessorySets, "12-15", "45 sec", "Light shoulder and posture polish."),
+        exercise(pick(library.conditioning, 3), "2", "5-8 min", "As needed", "Move easy and finish better than you started."),
+        exercise(pick(library.core, 1), "2", "20-30 sec", "30 sec", "Core control without fatigue chasing."),
+      ],
+    },
+  ];
+
+  return templates.slice(0, trainingDays).map((template, index) => {
+    const coreFinisher = createFocusCoreRotation(index, focus);
+
+    return buildDay(
+      `day-${index + 1}`,
+      `Day ${index + 1}: ${template.title}`,
+      template.focusText,
+      `${focus.title} priority: glutes, core, shoulders, posture, and conditioning stay structured while recovery decides how hard to push.`,
+      template.exercises,
+      {
+        coreFinisher,
+        supersets: [
+          createSupersetGroup(
+            `day-${index + 1}-focus-accessory`,
+            "Focus accessory pairing",
+            [template.exercises[2], template.exercises[3]],
+            "45-60 sec after both moves",
+            "Accessory pairing preserves the focus without extending the session forever.",
+          ),
+        ],
+      },
+    );
+  });
+}
+
 type AdvancedIntensityPhase = "base" | "burnout" | "tempo";
 
 function resolveAdvancedIntensityPhase(completedWorkoutCount: number): AdvancedIntensityPhase {
@@ -956,6 +1171,7 @@ export function canGenerateWorkoutPlan(input: WorkoutPlannerInput): boolean {
 interface GenerateWorkoutPlanOptions {
   enableBlaqMass?: boolean;
   trainingPathId?: TrainingPathId | null;
+  trainingFocusId?: TrainingFocusId | null;
 }
 
 export function generateWorkoutPlan(
@@ -974,9 +1190,11 @@ export function generateWorkoutPlan(
   const equipment = input.availableEquipment;
   const goalPace = input.goalPace ?? "steady";
   const selectedTrainingPath = getTrainingPathById(options.trainingPathId);
+  const selectedTrainingFocus = getTrainingFocusById(options.trainingFocusId ?? input.trainingFocusId);
   const useAdvancedBodybuildingSplit =
     options.enableBlaqMass === true &&
     selectedTrainingPath.id === "beast" &&
+    selectedTrainingFocus.id === "mass-power" &&
     goal === "muscle-gain" &&
     (experience === "advanced" || experience === "intermediate") &&
     location === "gym";
@@ -993,11 +1211,14 @@ export function generateWorkoutPlan(
     : resolvePathTrainingDays(selectedTrainingPath, defaultTrainingDays, completedWorkoutCount);
   const weekIndex = resolveWeekIndex();
   const library = buildExerciseLibrary(location, equipment);
+  const useFocusBias = selectedTrainingFocus.id !== "mass-power";
   const days = useAdvancedBodybuildingSplit
     ? buildAdvancedBodybuildingDays(library, weekIndex, completedWorkoutCount)
-    : trainingDays <= 3
-      ? buildFullBodyDays(trainingDays, library, goal, experience)
-      : buildSplitDays(trainingDays, library, goal, experience);
+    : useFocusBias
+      ? buildFocusBiasDays(trainingDays, library, goal, experience, selectedTrainingFocus, selectedTrainingPath.id === "beast")
+      : trainingDays <= 3
+        ? buildFullBodyDays(trainingDays, library, goal, experience)
+        : buildSplitDays(trainingDays, library, goal, experience);
   const intensityPhase = resolveAdvancedIntensityPhase(completedWorkoutCount);
 
   if (__DEV__) {
@@ -1013,21 +1234,30 @@ export function generateWorkoutPlan(
       trainingDays,
       branch: useAdvancedBodybuildingSplit
         ? "advanced-bodybuilding"
-        : trainingDays <= 3
+        : useFocusBias
+          ? selectedTrainingFocus.id
+          : trainingDays <= 3
           ? "full-body"
           : "split",
+      trainingFocusId: selectedTrainingFocus.id,
     });
   }
 
+  const focusTitlePrefix = selectedTrainingFocus.id === "mass-power"
+    ? null
+    : `${selectedTrainingPath.title}: ${selectedTrainingFocus.title}`;
   const plan: WorkoutPlan = {
     version: WORKOUT_PLAN_VERSION,
     weekIndex,
     completedWorkoutCount,
     advancedIntensityPhase: intensityPhase,
     programLengthWeeks: selectedTrainingPath.id === "foundation" ? 12 : useAdvancedBodybuildingSplit ? 16 : 8,
+    trainingFocusId: selectedTrainingFocus.id,
     title:
       useAdvancedBodybuildingSplit
         ? "Beast Path: Golden-Era Inspired AI Bodybuilding"
+        : focusTitlePrefix
+          ? focusTitlePrefix
         : goal === "fat-loss"
         ? "Lean & Athletic Week"
         : goal === "muscle-gain"
@@ -1036,6 +1266,8 @@ export function generateWorkoutPlan(
     summary:
       useAdvancedBodybuildingSplit
         ? "6-day training. Daily adaptation. Zero guesswork."
+        : selectedTrainingFocus.id !== "mass-power"
+        ? selectedTrainingFocus.description
         : goal === "fat-loss"
         ? "A balanced weekly structure with strength work, short core finishers, and steady conditioning support."
         : goal === "muscle-gain"
@@ -1055,6 +1287,12 @@ export function generateWorkoutPlan(
       selectedTrainingPath.id === "beast"
         ? "Built for serious lifters with Foundation paths if you are earning your way up. Keep sessions around 60-75 minutes and scale loads before pushing failure."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",
+      selectedTrainingFocus.id === "mass-power"
+        ? "Mass & Power keeps the existing compound, chest/back, arm, and moderate-core training behavior."
+        : `${selectedTrainingFocus.title} focus: ${selectedTrainingFocus.weeklyVolumeBias}`,
+      selectedTrainingFocus.coreFrequency === "daily-rotating"
+        ? "Core rotates daily across lower abs, stability, glute bracing, upper abs, oblique control, and mobility instead of repeating the same ab pattern."
+        : "Core volume stays matched to the focus and recovery needs.",
       useAdvancedBodybuildingSplit
         ? "Abs rotate deterministically from the front-core and oblique pools on every training day in this split."
         : "Core finishers stay short on purpose so they support consistency instead of burying recovery.",

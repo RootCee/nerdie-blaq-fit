@@ -1,4 +1,4 @@
-import { ActivityLevel, EquipmentOption, FitnessGoal, OnboardingProfile, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
+import { ActivityLevel, EquipmentOption, FitnessGoal, OnboardingProfile, TrainingFocusId, WorkoutExperience, WorkoutLocation } from "@/types/onboarding";
 
 export type SupportedWorkoutGoal = "fat-loss" | "muscle-gain" | "general-fitness";
 
@@ -73,6 +73,7 @@ export interface WorkoutPlan {
   title: string;
   summary: string;
   trainingDays: number;
+  trainingFocusId?: TrainingFocusId;
   goal: SupportedWorkoutGoal;
   experience: WorkoutExperience;
   location: WorkoutLocation;
@@ -237,5 +238,5 @@ export interface ExerciseSubstitution {
 export interface WorkoutPlannerInput
   extends Pick<
     OnboardingProfile,
-    "fitnessGoal" | "workoutExperience" | "workoutLocation" | "availableEquipment" | "activityLevel" | "weight" | "goalWeight" | "goalPace"
+    "fitnessGoal" | "workoutExperience" | "trainingFocusId" | "workoutLocation" | "availableEquipment" | "activityLevel" | "weight" | "goalWeight" | "goalPace"
   > {}

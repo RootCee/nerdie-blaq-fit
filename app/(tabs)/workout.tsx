@@ -9,6 +9,7 @@ import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatChip } from "@/components/ui/StatChip";
 import { TRAINING_PATHS, getTrainingPathById, recommendTrainingPath } from "@/config/trainingPaths";
+import { TRAINING_FOCUSES, getTrainingFocusById } from "@/config/trainingFocus";
 import { getExerciseDisplayName, toExerciseSlug } from "@/features/workouts/exercise-library";
 import { createDefaultDailyCheckIn, loadDailyCheckIn, saveDailyCheckIn } from "@/features/workouts/daily-checkin-persistence";
 import { generateWorkoutPlan } from "@/features/workouts/generate-workout-plan";
@@ -111,6 +112,7 @@ function shouldReplaceSavedPlan(savedPlan: WorkoutPlan, generatedPlan: WorkoutPl
     savedPlan.version !== generatedPlan.version ||
     savedPlan.title !== generatedPlan.title ||
     savedPlan.trainingDays !== generatedPlan.trainingDays ||
+    savedPlan.trainingFocusId !== generatedPlan.trainingFocusId ||
     savedPlan.programLengthWeeks !== generatedPlan.programLengthWeeks ||
     savedPlan.weekIndex !== generatedPlan.weekIndex ||
     savedPlan.advancedIntensityPhase !== generatedPlan.advancedIntensityPhase
@@ -272,14 +274,16 @@ export default function WorkoutScreen() {
   const { isPro } = useSubscription();
   const [completedWorkoutCount, setCompletedWorkoutCount] = useState(0);
   const selectedTrainingPath = getTrainingPathById(profile.trainingPathId ?? recommendTrainingPath(profile));
+  const selectedTrainingFocus = getTrainingFocusById(profile.trainingFocusId);
   const effectiveTrainingPath = selectedTrainingPath.proRequired && !isPro ? getTrainingPathById("foundation") : selectedTrainingPath;
   const wantsBlaqMass = selectedTrainingPath.id === "beast";
   const generatedPlan = useMemo(
     () => generateWorkoutPlan(profile, completedWorkoutCount, {
       enableBlaqMass: isPro,
       trainingPathId: effectiveTrainingPath.id,
+      trainingFocusId: selectedTrainingFocus.id,
     }),
-    [completedWorkoutCount, effectiveTrainingPath.id, isPro, profile],
+    [completedWorkoutCount, effectiveTrainingPath.id, isPro, profile, selectedTrainingFocus.id],
   );
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [dayLogs, setDayLogs] = useState<Record<string, WorkoutDayLog>>({});
@@ -567,6 +571,19 @@ export default function WorkoutScreen() {
     }
   };
 
+  const handleTrainingFocusSelect = async (focusId: typeof selectedTrainingFocus.id) => {
+    const nextProfile = { ...profile, trainingFocusId: focusId };
+    updateProfile({ trainingFocusId: focusId });
+    setAdaptiveResult(null);
+    setAdaptiveError(null);
+
+    try {
+      await saveProfile(nextProfile);
+    } catch {
+      // Profile save errors are already surfaced by the onboarding store.
+    }
+  };
+
   const handleGenerateAdaptiveWorkout = async (checkInOverride?: DailyReadinessCheckInValue) => {
     if (!plan) {
       setAdaptiveError("No workout plan is available yet. Refresh your plan and try again.");
@@ -593,6 +610,7 @@ export default function WorkoutScreen() {
       const adaptationInput = {
         profile,
         selectedTrainingPath: effectiveTrainingPath,
+        selectedTrainingFocus,
         plannedWorkout: todayWorkout,
         checkIn: savedCheckIn,
       };
@@ -734,6 +752,29 @@ export default function WorkoutScreen() {
               Beast Path is a Pro path. Foundation stays active until Pro is unlocked.
             </Text>
           ) : null}
+          <View style={styles.pathSelector}>
+            <Text style={styles.pathSelectorTitle}>Training focus</Text>
+            <Text style={styles.helperText}>
+              Choose the training focus that matches the body and performance you’re building.
+            </Text>
+            <View style={styles.pathGrid}>
+              {TRAINING_FOCUSES.map((focus) => {
+                const isSelected = selectedTrainingFocus.id === focus.id;
+
+                return (
+                  <Pressable
+                    key={focus.id}
+                    onPress={() => void handleTrainingFocusSelect(focus.id)}
+                    style={[styles.pathCard, isSelected ? styles.pathCardSelected : null]}
+                  >
+                    <Text style={styles.pathTitle}>{focus.title}</Text>
+                    <Text style={styles.pathSubtitle}>{focus.subtitle}</Text>
+                    <Text style={styles.pathDescription} numberOfLines={3}>{focus.description}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
           {todaysPlannedWorkout ? (
           <>

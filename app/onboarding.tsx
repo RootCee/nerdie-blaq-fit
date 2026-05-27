@@ -11,6 +11,7 @@ import { MultiSelectChips, OptionChips } from "@/components/ui/OptionChips";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { Screen } from "@/components/ui/Screen";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { TRAINING_FOCUSES, getTrainingFocusGuidance, recommendTrainingFocus } from "@/config/trainingFocus";
 import { TRAINING_PATHS, getTrainingPathGuidance, recommendTrainingPath } from "@/config/trainingPaths";
 import { parseHeightInMeters, parseWeightInPounds } from "@/lib/body-metrics";
 import {
@@ -93,6 +94,10 @@ function validateStep(profile: OnboardingProfile, stepIndex: number): StepErrors
     if (!profile.workoutExperience) {
       errors.workoutExperience = "Select your workout experience.";
     }
+
+    if (!profile.trainingFocusId) {
+      errors.trainingFocusId = "Select your training focus.";
+    }
   }
 
   if (stepIndex === 2) {
@@ -129,10 +134,21 @@ export default function OnboardingScreen() {
   const currentStepErrors = useMemo(() => validateStep(profile, step), [profile, step]);
   const isCurrentStepValid = Object.keys(currentStepErrors).length === 0;
   const trainingPathGuidance = useMemo(() => getTrainingPathGuidance(profile), [profile]);
+  const trainingFocusGuidance = useMemo(() => getTrainingFocusGuidance(profile), [profile]);
 
   useEffect(() => {
+    const nextProfile: Partial<OnboardingProfile> = {};
+
     if (!profile.trainingPathId && profile.workoutExperience && profile.fitnessGoal) {
-      updateProfile({ trainingPathId: recommendTrainingPath(profile) });
+      nextProfile.trainingPathId = recommendTrainingPath(profile);
+    }
+
+    if (!profile.trainingFocusId && profile.fitnessGoal) {
+      nextProfile.trainingFocusId = recommendTrainingFocus(profile);
+    }
+
+    if (Object.keys(nextProfile).length) {
+      updateProfile(nextProfile);
     }
   }, [profile, updateProfile]);
 
@@ -316,6 +332,19 @@ export default function OnboardingScreen() {
               onChange={(value) => updateProfile({ trainingPathId: value })}
             />
             <Text style={styles.helperText}>{trainingPathGuidance}</Text>
+          </View>
+          <View style={styles.group}>
+            <Text style={styles.label}>Training focus</Text>
+            <Text style={styles.helperText}>
+              Choose the training focus that matches the body and performance you’re building.
+            </Text>
+            <OptionChips
+              options={TRAINING_FOCUSES.map((focus) => ({ label: focus.title, value: focus.id }))}
+              value={profile.trainingFocusId}
+              onChange={(value) => updateProfile({ trainingFocusId: value })}
+            />
+            <Text style={styles.helperText}>{trainingFocusGuidance}</Text>
+            {currentStepErrors.trainingFocusId ? <Text style={styles.inlineError}>{currentStepErrors.trainingFocusId}</Text> : null}
           </View>
         </SectionCard>
       ) : null}

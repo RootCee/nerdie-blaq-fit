@@ -20,6 +20,7 @@ export type WorkoutExperience = "beginner" | "intermediate" | "advanced";
 export type WorkoutLocation = "home" | "gym" | "both";
 
 export type TrainingPathId = "foundation" | "athlete" | "maintenance" | "beast";
+export type TrainingFocusId = "mass-power" | "sculpt-strength" | "athletic-conditioning" | "glutes-core";
 
 export type DietaryPreference =
   | "balanced"
@@ -53,6 +54,7 @@ export interface OnboardingProfile {
   fitnessGoal: FitnessGoal | null;
   workoutExperience: WorkoutExperience | null;
   trainingPathId: TrainingPathId | null;
+  trainingFocusId: TrainingFocusId | null;
   workoutLocation: WorkoutLocation | null;
   availableEquipment: EquipmentOption[];
   dietaryPreference: DietaryPreference | null;
@@ -80,6 +82,7 @@ export interface SupabaseProfileRow {
   fitness_goal: FitnessGoal | null;
   workout_experience: WorkoutExperience | null;
   training_path_id?: TrainingPathId | null;
+  training_focus_id?: TrainingFocusId | null;
   workout_location: WorkoutLocation | null;
   available_equipment: EquipmentOption[] | null;
   dietary_preference: DietaryPreference | null;

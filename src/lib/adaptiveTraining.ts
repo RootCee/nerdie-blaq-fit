@@ -1,3 +1,4 @@
+import { TrainingFocusConfig, getTrainingFocusById } from "@/config/trainingFocus";
 import { TrainingPathConfig } from "@/config/trainingPaths";
 import { OnboardingProfile } from "@/types/onboarding";
 import { DailyReadinessCheckIn } from "@/types/readiness";
@@ -6,6 +7,7 @@ import { WorkoutDay, WorkoutExercise } from "@/types/workout";
 export interface AdaptiveTrainingInput {
   profile: OnboardingProfile;
   selectedTrainingPath: TrainingPathConfig;
+  selectedTrainingFocus?: TrainingFocusConfig;
   plannedWorkout: WorkoutDay;
   checkIn: DailyReadinessCheckIn;
 }
@@ -71,6 +73,7 @@ export function adaptWorkoutForReadiness(input: AdaptiveTrainingInput): Adaptive
   const soreMusclePenalty = Math.max(...Object.values(input.checkIn.soreness));
   const volumeAdjustment = resolveVolumeAdjustment(input.checkIn, soreMusclePenalty);
   const jointRegions = detectJointRegions(input.checkIn.jointPainNotes);
+  const trainingFocus = input.selectedTrainingFocus ?? getTrainingFocusById(input.profile.trainingFocusId);
   const exerciseSwaps: ExerciseSwap[] = [];
   const removedExercises: string[] = [];
 
@@ -88,12 +91,13 @@ export function adaptWorkoutForReadiness(input: AdaptiveTrainingInput): Adaptive
     return swapped;
   });
 
-  const timeAdjustedExercises = trimForAvailableTime(swappedExercises, input.checkIn.timeAvailableMinutes, removedExercises);
+  const timeAdjustedExercises = trimForAvailableTime(swappedExercises, input.checkIn.timeAvailableMinutes, removedExercises, trainingFocus);
   const adjustedExercises = applyVolumeAdjustment(timeAdjustedExercises, volumeAdjustment, input.checkIn.previousSessionRpe);
-  const adjustedCoreFinisher = input.plannedWorkout.coreFinisher && input.checkIn.timeAvailableMinutes >= 45
+  const coreVolumeAdjustment = resolveCoreVolumeAdjustment(volumeAdjustment, soreMusclePenalty, trainingFocus);
+  const adjustedCoreFinisher = input.plannedWorkout.coreFinisher && input.checkIn.timeAvailableMinutes >= 45 && coreVolumeAdjustment > 0
     ? {
         ...input.plannedWorkout.coreFinisher,
-        exercises: applyVolumeAdjustment(input.plannedWorkout.coreFinisher.exercises, Math.min(volumeAdjustment, 0.8), input.checkIn.previousSessionRpe),
+        exercises: applyVolumeAdjustment(input.plannedWorkout.coreFinisher.exercises, coreVolumeAdjustment, input.checkIn.previousSessionRpe),
       }
     : null;
 
@@ -197,15 +201,16 @@ function adjustSetText(sets: string, multiplier: number) {
   return sets.replace(firstNumber, String(adjustedSets));
 }
 
-function trimForAvailableTime(exercises: WorkoutExercise[], minutes: number, removedExercises: string[]) {
+function trimForAvailableTime(exercises: WorkoutExercise[], minutes: number, removedExercises: string[], focus: TrainingFocusConfig) {
   if (minutes >= 55 || exercises.length <= 4) {
     return exercises;
   }
 
-  const compoundExercises = exercises.filter((item, index) => index < 2 || isCompoundExercise(item.name));
+  const sortedExercises = [...exercises].sort((a, b) => getFocusPreservationScore(b, focus) - getFocusPreservationScore(a, focus));
+  const compoundExercises = sortedExercises.filter((item, index) => index < 2 || isCompoundExercise(item.name) || getFocusPreservationScore(item, focus) >= 3);
   const targetCount = minutes < 35 ? 4 : 5;
-  const kept = compoundExercises.slice(0, targetCount);
-  const keptNames = new Set(kept.map((item) => item.name));
+  const keptNames = new Set(compoundExercises.slice(0, targetCount).map((item) => item.name));
+  const kept = exercises.filter((item) => keptNames.has(item.name));
 
   exercises.forEach((item) => {
     if (!keptNames.has(item.name)) {
@@ -214,6 +219,35 @@ function trimForAvailableTime(exercises: WorkoutExercise[], minutes: number, rem
   });
 
   return kept;
+}
+
+function resolveCoreVolumeAdjustment(volumeAdjustment: number, highestSoreness: number, focus: TrainingFocusConfig) {
+  if (highestSoreness >= 8) {
+    return 0;
+  }
+
+  const focusCoreFloor = focus.id === "sculpt-strength" || focus.id === "glutes-core" ? 0.65 : 0.5;
+  const adjusted = highestSoreness >= 6 ? Math.min(volumeAdjustment, 0.65) : Math.min(volumeAdjustment, 0.85);
+
+  return clamp(adjusted, focusCoreFloor, 1);
+}
+
+function getFocusPreservationScore(exercise: WorkoutExercise, focus: TrainingFocusConfig) {
+  const name = exercise.name.toLowerCase();
+  let score = isCompoundExercise(exercise.name) ? 2 : 0;
+
+  if (focus.id === "sculpt-strength" || focus.id === "glutes-core") {
+    if (/glute|hip thrust|bridge|lunge|split squat|squat|hamstring|leg/.test(name)) score += 4;
+    if (/shoulder|raise|reverse fly|face pull|row|posture/.test(name)) score += 3;
+    if (/plank|dead bug|bird dog|hollow|side plank|core|abs|crunch/.test(name)) score += 3;
+  } else if (focus.id === "athletic-conditioning") {
+    if (/conditioning|walk|circuit|boxing|interval|mountain climber|swing/.test(name)) score += 4;
+    if (/squat|lunge|push-up|row|pull|press/.test(name)) score += 2;
+  } else {
+    if (/bench|row|pull|press|curl|tricep|deadlift|squat/.test(name)) score += 3;
+  }
+
+  return score;
 }
 
 function swapExerciseForJointNotes(exercise: WorkoutExercise, jointRegions: JointRegion[]): WorkoutExercise {
