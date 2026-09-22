@@ -29,6 +29,7 @@ interface SubscriptionStoreValue {
   activationMessage: string | null;
   offering: PurchasesOffering | null;
   proPackage: PurchasesPackage | null;
+  isTrialEligible: boolean;
   error: string | null;
   purchasePro: () => Promise<void>;
   restorePurchases: () => Promise<void>;
@@ -55,8 +56,13 @@ function hasProEntitlement(customerInfo: CustomerInfo | null) {
   return customerInfo?.entitlements.active[REVENUECAT_ENTITLEMENT_ID]?.isActive === true;
 }
 
+// Google Play reports subscriptions as "<productId>:<basePlanId>", App Store as "<productId>".
+export function matchesProProduct(identifier: string | null | undefined) {
+  return identifier === REVENUECAT_PRODUCT_ID || Boolean(identifier?.startsWith(`${REVENUECAT_PRODUCT_ID}:`));
+}
+
 function hasProProductSubscription(customerInfo: CustomerInfo | null) {
-  return customerInfo?.activeSubscriptions.includes(REVENUECAT_PRODUCT_ID) === true;
+  return customerInfo?.activeSubscriptions.some(matchesProProduct) === true;
 }
 
 function hasProAccess(customerInfo: CustomerInfo | null) {
@@ -70,7 +76,7 @@ function wait(milliseconds: number) {
 }
 
 function findProPackage(offering: PurchasesOffering | null) {
-  return offering?.availablePackages.find((item) => item.product.identifier === REVENUECAT_PRODUCT_ID) ?? null;
+  return offering?.availablePackages.find((item) => matchesProProduct(item.product.identifier)) ?? null;
 }
 
 function getPackageDebugInfo(pkg: PurchasesPackage | null) {
@@ -82,7 +88,7 @@ function getPackageDebugInfo(pkg: PurchasesPackage | null) {
     productId: pkg.product.identifier,
     packageIdentifier: pkg.identifier,
     offeringIdentifier: pkg.presentedOfferingContext.offeringIdentifier,
-    isConfiguredProduct: pkg.product.identifier === REVENUECAT_PRODUCT_ID,
+    isConfiguredProduct: matchesProProduct(pkg.product.identifier),
   };
 }
 
@@ -101,7 +107,8 @@ function getCustomerInfoDebugInfo(customerInfo: CustomerInfo | null) {
     activeSubscriptions: customerInfo.activeSubscriptions,
     allPurchasedProductIdentifiers: customerInfo.allPurchasedProductIdentifiers,
     latestExpirationDate: customerInfo.latestExpirationDate,
-    configuredProductExpirationDate: customerInfo.allExpirationDates[REVENUECAT_PRODUCT_ID] ?? null,
+    configuredProductExpirationDate: Object.entries(customerInfo.allExpirationDates)
+      .find(([productId]) => matchesProProduct(productId))?.[1] ?? null,
     hasProEntitlementKey: entitlementIds.includes(REVENUECAT_ENTITLEMENT_ID),
     hasActiveProEntitlement: hasProEntitlement(customerInfo),
     hasConfiguredProductSubscription: hasProProductSubscription(customerInfo),
@@ -110,6 +117,10 @@ function getCustomerInfoDebugInfo(customerInfo: CustomerInfo | null) {
 }
 
 function logSubscriptionDebug(label: string, payload: Record<string, unknown>) {
+  if (!__DEV__) {
+    return;
+  }
+
   console.log(`[subscription-debug] ${label}`, {
     expectedEntitlementId: REVENUECAT_ENTITLEMENT_ID,
     expectedProductId: REVENUECAT_PRODUCT_ID,
@@ -159,7 +170,7 @@ function logRevenueCatOfferings(offerings: PurchasesOfferings) {
       offeringIdentifier: entry.presentedOfferingContext.offeringIdentifier,
       packageIdentifier: entry.identifier,
       productId: entry.product.identifier,
-      isConfiguredProduct: entry.product.identifier === REVENUECAT_PRODUCT_ID,
+      isConfiguredProduct: matchesProProduct(entry.product.identifier),
     })),
   });
 }
@@ -196,6 +207,29 @@ async function configureRevenueCatIfNeeded() {
   }
 
   return configurePurchasesPromise;
+}
+
+async function getTrialEligibility(pkg: PurchasesPackage | null) {
+  if (!pkg) {
+    return false;
+  }
+
+  if (Platform.OS === "android") {
+    // Google Play only returns offers the user is eligible for.
+    return Boolean(pkg.product.defaultOption?.freePhase);
+  }
+
+  if (!pkg.product.introPrice) {
+    return false;
+  }
+
+  try {
+    const eligibility = await Purchases.checkTrialOrIntroductoryPriceEligibility([pkg.product.identifier]);
+    return eligibility[pkg.product.identifier]?.status
+      === Purchases.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE;
+  } catch {
+    return false;
+  }
 }
 
 async function getPremiumOverride() {
@@ -263,6 +297,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<SubscriptionStatus>("loading");
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [offering, setOffering] = useState<PurchasesOffering | null>(null);
+  const [isTrialEligible, setIsTrialEligible] = useState(false);
   const [isPremiumOverride, setIsPremiumOverride] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -310,6 +345,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       logProductFallbackIfNeeded("refresh", nextCustomerInfo);
       setCustomerInfo(nextCustomerInfo);
       setOffering(nextOfferings.current ?? null);
+      setIsTrialEligible(await getTrialEligibility(findProPackage(nextOfferings.current ?? null)));
       setError(findProPackage(nextOfferings.current ?? null) ? null : CONFIGURING_SUBSCRIPTION_MESSAGE);
       setStatus("ready");
     } catch (subscriptionError) {
@@ -428,7 +464,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    if (proPackage.product.identifier !== REVENUECAT_PRODUCT_ID) {
+    if (!matchesProProduct(proPackage.product.identifier)) {
       setError(`Subscription product mismatch. Expected ${REVENUECAT_PRODUCT_ID}, found ${proPackage.product.identifier}.`);
       return;
     }
@@ -445,7 +481,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       logSubscriptionDebug("purchase starting", {
         appUserId: appUserIdBeforePurchase,
         package: getPackageDebugInfo(proPackage),
-        isIntendedMonthlyPackage: proPackage.product.identifier === REVENUECAT_PRODUCT_ID,
+        isIntendedMonthlyPackage: matchesProProduct(proPackage.product.identifier),
       });
 
       const result = await Purchases.purchasePackage(proPackage);
@@ -570,6 +606,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       activationMessage,
       offering,
       proPackage,
+      isTrialEligible,
       error,
       purchasePro,
       restorePurchases,
@@ -582,6 +619,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       isPro,
       isPurchasing,
       isRestoring,
+      isTrialEligible,
       offering,
       purchaseActivationStatus,
       proPackage,

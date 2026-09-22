@@ -270,7 +270,7 @@ export default function ProfileScreen() {
 
       <SectionCard title="Delete Account" eyebrow="Permanent">
         <Text style={styles.copy}>
-          Delete your Nerdie Blaq Fit account and app data, including your profile, workout plan, workout logs, and body weight logs. This cannot be undone.
+          Delete your Nerdie Blaq Fit account and app data, including your profile, workout plans and logs, body weight, food and supplement logs, check-ins, and challenge progress. An active subscription is not canceled automatically — manage it in your App Store / Google Play subscriptions. This cannot be undone.
         </Text>
         {deleteAccountError ? <Text style={styles.error}>{deleteAccountError}</Text> : null}
         <PrimaryButton
@@ -296,7 +296,7 @@ export default function ProfileScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Delete account?</Text>
             <Text style={styles.copy}>
-              This permanently deletes your account and app data from Nerdie Blaq Fit, including profile details, workout plans, workout logs, and progress data.
+              This permanently deletes your account and app data from Nerdie Blaq Fit, including profile details, workout plans, workout logs, nutrition logs, and progress data.
             </Text>
             {deleteAccountError ? <Text style={styles.error}>{deleteAccountError}</Text> : null}
             <View style={styles.buttonGroup}>

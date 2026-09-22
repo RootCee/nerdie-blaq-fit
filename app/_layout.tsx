@@ -9,6 +9,13 @@ import { OnboardingStoreProvider } from "@/store/onboarding-store";
 import { SubscriptionProvider } from "@/store/subscription-store";
 import { appTheme } from "@/theme";
 
+// Keep debug output (auth, subscription, HealthKit details) out of release builds.
+if (!__DEV__) {
+  console.log = () => undefined;
+  console.debug = () => undefined;
+  console.info = () => undefined;
+}
+
 export default function RootLayout() {
   useEffect(() => {
     const processUrl = (url: string | null) => {

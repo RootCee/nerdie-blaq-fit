@@ -112,7 +112,6 @@ export async function handleAuthCallbackUrl(url: string): Promise<SessionStatus 
   }
 
   const { code, accessToken, refreshToken, error, errorDescription } = extractCallbackParams(url);
-  console.log(`[social-auth] callback URL received: ${url}`);
   console.log(`[social-auth] callback code present: ${Boolean(code)}`);
   console.log(`[social-auth] callback tokens present: ${Boolean(accessToken && refreshToken)}`);
 

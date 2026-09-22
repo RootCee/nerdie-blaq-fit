@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getGeminiModels, requireProAndQuota } from "../_shared/pro-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -7,10 +8,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
 };
 
-const GEMINI_MODELS = (Deno.env.get("GEMINI_MODEL") ?? "gemini-2.0-flash-lite,gemini-2.0-flash,gemini-2.5-flash")
-  .split(",")
-  .map((model) => model.trim())
-  .filter(Boolean);
+const GEMINI_MODELS = getGeminiModels();
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -44,6 +42,12 @@ Deno.serve(async (req) => {
 
   if (userError || !user) {
     return jsonResponse({ error: "Sign in again before using AI food estimates." }, 401);
+  }
+
+  const accessDenied = await requireProAndQuota(userClient, user.id, "food-estimate", 60);
+
+  if (accessDenied) {
+    return jsonResponse({ error: accessDenied.error }, accessDenied.status);
   }
 
   let body;
@@ -85,11 +89,12 @@ async function requestGeminiFoodEstimate(input, apiKey) {
 
 async function requestGeminiFoodEstimateWithModel(input, apiKey, model) {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
         generationConfig: {

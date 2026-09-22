@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -40,6 +40,22 @@ function formatSubscriptionPeriod(period: string | null | undefined) {
   }
 }
 
+const STORE_NAME = Platform.OS === "android" ? "Google Play" : "Apple";
+const MANAGE_SUBSCRIPTIONS_COPY = Platform.OS === "android"
+  ? "Cancel anytime in Google Play > Payments & subscriptions."
+  : "Cancel anytime in Settings > Apple ID > Subscriptions.";
+
+function formatTrialLength(numberOfUnits: number | undefined, unit: string | undefined) {
+  if (!numberOfUnits || !unit) {
+    return "3-Day";
+  }
+
+  const unitLabel = unit.toLowerCase().replace(/s$/, "");
+  const capitalized = unitLabel.charAt(0).toUpperCase() + unitLabel.slice(1);
+
+  return `${numberOfUnits}-${capitalized}`;
+}
+
 export default function PaywallScreen() {
   const { feature } = useLocalSearchParams<{ feature?: string }>();
   const {
@@ -51,6 +67,7 @@ export default function PaywallScreen() {
     purchaseActivationStatus,
     activationMessage,
     proPackage,
+    isTrialEligible,
     error,
     purchasePro,
     restorePurchases,
@@ -62,6 +79,17 @@ export default function PaywallScreen() {
   const product = proPackage?.product ?? null;
   const subscriptionPeriod = formatSubscriptionPeriod(product?.subscriptionPeriod);
   const displayedPrice = product?.priceString ? `${product.priceString}/${subscriptionPeriod}` : "Subscription price loading";
+  const trialLength = Platform.OS === "android"
+    ? formatTrialLength(
+        product?.defaultOption?.freePhase?.billingPeriod?.value,
+        product?.defaultOption?.freePhase?.billingPeriod?.unit,
+      )
+    : formatTrialLength(product?.introPrice?.periodNumberOfUnits, product?.introPrice?.periodUnit);
+  const purchaseLabel = isTrialEligible
+    ? `Start ${trialLength} Free Trial`
+    : product?.priceString
+      ? `Subscribe for ${displayedPrice}`
+      : "Subscribe to Pro";
   const configurationMessage = "Subscription is being configured. Please try again soon.";
   const displayError = activationMessage
     ? actionError
@@ -122,11 +150,14 @@ export default function PaywallScreen() {
         <Text style={styles.closeText}>Close</Text>
       </Pressable>
 
-      <SectionCard title="Pro subscription" eyebrow="3-day free trial">
+      <SectionCard title="Pro subscription" eyebrow={isTrialEligible ? `${trialLength.toLowerCase()} free trial` : "Monthly"}>
         <View style={styles.priceBlock}>
           <Text style={styles.price}>{displayedPrice}</Text>
           <Text style={styles.copy}>
-            Start with a 3-day free trial when Apple shows one for your account. Cancel anytime in your Apple ID subscriptions.
+            {isTrialEligible
+              ? `${trialLength} free trial, then ${displayedPrice}. Auto-renews until canceled. `
+              : `${displayedPrice}, auto-renews until canceled. `}
+            {MANAGE_SUBSCRIPTIONS_COPY}
           </Text>
         </View>
         <View style={styles.featureList}>
@@ -166,7 +197,7 @@ export default function PaywallScreen() {
         ) : null}
         {displayError ? <Text style={styles.errorText}>{displayError}</Text> : null}
         <PrimaryButton
-          label={isPurchasing || isActivating ? "Activating Pro..." : "Start 3-Day Free Trial"}
+          label={isPurchasing || isActivating ? "Activating Pro..." : purchaseLabel}
           onPress={() => void handlePurchase()}
           disabled={isBusy || isPro || !hasPackage}
         />
@@ -177,7 +208,7 @@ export default function PaywallScreen() {
           disabled={isBusy}
         />
         <Text style={styles.legalText}>
-          Product ID: {proPackage?.product.identifier ?? REVENUECAT_PRODUCT_ID}. Payment is handled by Apple in-app purchase.
+          Product ID: {proPackage?.product.identifier ?? REVENUECAT_PRODUCT_ID}. Payment is handled by {STORE_NAME} in-app purchase.
         </Text>
         <View style={styles.legalLinkRow}>
           <Pressable onPress={() => void openLegalUrl(TERMS_URL)} hitSlop={8}>
@@ -189,7 +220,7 @@ export default function PaywallScreen() {
           </Pressable>
         </View>
         <Text style={styles.legalText}>
-          By starting a trial or restoring purchases, you agree to the Terms of Use and acknowledge the Privacy Policy.
+          By subscribing, starting a trial, or restoring purchases, you agree to the Terms of Use and acknowledge the Privacy Policy.
         </Text>
       </SectionCard>
     </Screen>
